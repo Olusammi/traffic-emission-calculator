@@ -1,5 +1,9 @@
 libgl1-mesa-glx
 libglib2.0-0
 libspatialindex-dev
-libgeos-devlibgl1-mesa-glx
-libglib2.0-0
+libgeos-dev
+libosmium2-dev
+libboost-dev
+libexpat1-dev
+zlib1g-dev
+libbz2-dev
