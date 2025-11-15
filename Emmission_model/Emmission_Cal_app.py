@@ -1,6 +1,7 @@
 import streamlit as st
 import numpy as np
 import matplotlib
+matplotlib.use('Agg')  # Set backend before importing pyplot
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import matplotlib.cm as cmx
@@ -9,10 +10,9 @@ import pandas as pd
 from io import BytesIO
 import zipfile
 
-st.set_page_config(page_title="Traffic Emission Calculator by SHsassan", layout="wide")
+st.set_page_config(page_title="Traffic Emission Calculator", layout="wide")
 
-st.title("🚌 Traffic Emission Calculator with OSM Visualization")
-st.caption("Built by Samuel Hassan")
+st.title("🚗 Traffic Emission Calculator with OSM Visualization")
 st.markdown("Upload your input files to calculate and visualize traffic emissions")
 
 # Sidebar for file uploads
@@ -604,4 +604,4 @@ st.sidebar.markdown("""
 7. Generate and download results
 """)
 
-st.sidebar.info("Built with Streamlit by Samuel Hassan🎈")
+st.sidebar.info("Built with Streamlit 🎈")
