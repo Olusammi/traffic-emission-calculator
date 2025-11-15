@@ -17,6 +17,122 @@ st.title("🚗 Traffic Emission Calculator with OSM Visualization")
 st.caption("Built by SHassan")
 st.markdown("Upload your input files to calculate and visualize traffic emissions")
 
+# Content of the instruction tab (loaded from instructions_tab.md)
+INSTRUCTION_CONTENT = """
+# 🏭 Emission Calculation and Visualization Workflow
+
+Welcome to the Emission Calculation and Visualization App! This tab provides detailed instructions on the entire process, starting with the necessary geospatial data preparation in QGIS and ending with the interpretation of the visualized emission factors.
+
+This workflow is divided into three main stages: **QGIS Geospatial Data Preparation**, **Data Conversion and Formatting**, and **App Usage & Visualization**.
+
+## Stage 1: QGIS Geospatial Data Preparation (Street Network Modeling)
+
+This stage involves preparing the street network data, merging layers, and calculating the required variables within a Geographic Information System (GIS) environment (QGIS).
+
+### I. Install QGIS
+
+Ensure QGIS (a free and open-source Geographic Information System) is installed on your system. 
+### II. 🗺️ Street Network Data Acquisition
+
+This section focuses on using QGIS to download the relevant street data for the study area.
+
+* **Action:** Open QGIS and create a New Project. Use the map interface to zoom in to the specific geographic location intended for the emission calculation.
+
+* **Install Plugin:** Navigate to **Plugins** $\rightarrow$ **Manage and Install Plugins...** and install the **"OSM Downloader"** plugin. This is used to download map data from OpenStreetMap.
+
+* **Download Data:** Use the OSM Downloader tool. Select the **"Select Manually"** option to draw a bounding box around your required area.
+
+* **Export:** Click **Export**. Save the downloaded data file, typically as a `.json` file (e.g., `CityName_StreetNetwork.json`).
+
+### III. 🧩 Data Processing and Layer Merging
+
+The downloaded OSM data often separates network features into distinct layers. This step consolidates the road network into a single layer.
+
+* **Load Data:** Drag and drop the downloaded `.json` file into the Layers Panel. This imports the vector layers, including `lines` (single segments) and `multilines` (complex segments).
+
+* **Merge Layers:**
+
+    * Open the **Processing Toolbox** (**View** $\rightarrow$ **Panels** $\rightarrow$ **Processing Toolbox**).
+
+    * Search for and select the **"Merge Vector Layers"** tool.
+
+    * In the tool dialog, select **ONLY** the `lines` and `multilines` layers as the input to be merged.
+
+    * **Output:** The result is a new merged layer containing the complete street network.
+
+### IV. 📊 Attribute Table Calculation
+
+The new merged layer's attribute table must be structured and calculated to provide the necessary input variables for the emission model.
+
+* **Access Table:** Right-click the new merged layer and select **Open Attribute Table**.
+
+* **Add Emission Model Variables:** New fields (columns) must be added and calculated. Key variables typically include:
+
+    * $Length$: The physical length of each street segment (in meters or kilometers).
+
+    * $Flow$: The estimated vehicle count or traffic volume (vehicles/hour).
+
+    * $Speed$: The average or posted vehicle speed ($\text{km/h}$ or $\text{mi/h}$).
+
+    * $\text{Gasoline Prop}$: The proportion of gasoline-powered vehicles.
+
+    * $\text{PC Prop}$: The proportion of public cars.
+
+    * $\text{4Stroke Prop}$: The proportion of 4-stroke motorcycles.
+
+* **Action:** Calculate the required values for these fields based on the raw street geometry and any external traffic data or model assumptions.
+
+## Stage 2: Data Conversion and Formatting for App Upload
+
+The final input file for the Streamlit application must be in a very specific space-separated `.dat` format.
+
+### 1. Final Attribute Selection and CSV Export
+
+* **Action:** Delete all irrelevant columns from the attribute table. The model requires the table to be arranged in this exact format (order and column names):
+
+    $$
+    \text{OSM\_ID, Length\_km, Flow, Speed, Gasoline\_Prop, PC\_Prop, 4Stroke\_Prop}
+    $$
+
+* **Export:** Right-click the final merged layer $\rightarrow$ **Export** $\rightarrow$ **Save Feature As...**
+
+* **Format:** Choose **Comma Separated Values (CSV)**.
+
+### 2. CSV to DAT Conversion (Mandatory Steps)
+
+This conversion ensures the file can be read correctly by the calculation engine.
+
+* **A. Open in Editor:** Open the exported CSV file using a plain text editor (e.g., Notepad).
+
+* **B. Find and Replace (Separators):**
+
+    * **Find:** The CSV field separator (e.g., `,:,` or `,`) and **Replace with:** A single space (` `) to make it space-separated.
+
+    * **Find:** `"` (Double Quotes - used to enclose string values) and **Replace with:** Nothing (delete).
+
+* **C. Save as DAT:** **Save the modified file** with the exact name `link_osm.dat`. This is important for the app to recognize the input.
+
+## Stage 3: App Usage & Visualization
+
+### 1. File Acquisition and Upload
+
+* **Supporting Files:** The application requires the `link_osm.dat` file you just created alongside other supporting input files (e.g., factor tables).
+
+* **Download:** A link to download all necessary auxiliary input files for the calculation is provided below. Download them first.
+    * **Auxiliary Files:** To ensure the app runs, you need the COPERT parameter and proportion files. **Download these files** before proceeding to upload.
+
+* **Upload:** Use the **"📂 Upload Input Files"** sidebar sections in this web app to upload **all** the required files, including your prepared `link_osm.dat`.
+
+### 2. Calculation and Visualization
+
+* **Action:** Once all files are uploaded, navigate to the **"⚙️ Calculate Emissions"** tab.
+
+* **Run:** The app will use the data from your `link_osm.dat` and the provided factor files to run the emission model and generate the output.
+
+* **Plotting:** Proceed to the **"🗺️ Emission Map"** tab for plotting the results and interpreting the calculated emission factors. The results can be downloaded from the **"📥 Download Results"** tab.
+"""
+
+
 # Sidebar for file uploads
 st.sidebar.header("📂 Upload Input Files")
 
@@ -54,8 +170,12 @@ y_max = col2.number_input("Y Max (Lat)", value=6.46934, format="%.5f")
 tolerance = st.sidebar.number_input("Tolerance", value=0.005, format="%.3f")
 ncore = st.sidebar.number_input("Number of Cores", value=8, min_value=1, max_value=16)
 
-# Main content area
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Data Preview", "⚙️ Calculate Emissions", "🗺️ Emission Map", "📥 Download Results"])
+# Main content area - Added 'Instructions' tab as the first element
+tab0, tab1, tab2, tab3, tab4 = st.tabs(["📖 Instructions", "📊 Data Preview", "⚙️ Calculate Emissions", "🗺️ Emission Map", "📥 Download Results"])
+
+with tab0:
+    st.header("Emission Calculation Workflow Instructions")
+    st.markdown(INSTRUCTION_CONTENT, unsafe_allow_html=True) # Display the detailed instructions
 
 with tab1:
     st.header("Data Preview")
@@ -598,17 +718,6 @@ Map Boundaries:
     else:
         st.info("Calculate emissions first to create ZIP archive")
 
-# Footer
+# Footer - REMOVED OLD INSTRUCTIONS SECTION
 st.sidebar.markdown("---")
-st.sidebar.markdown("**📖 Instructions:**")
-st.sidebar.markdown("""
-1. Upload all COPERT parameter files
-2. Upload link OSM data (7 columns)
-3. Upload proportion data files
-4. Upload OSM network file
-5. Configure map parameters
-6. Calculate emissions
-7. Generate and download results
-""")
-
 st.sidebar.info("Built with Streamlit by SHassan🎈")
