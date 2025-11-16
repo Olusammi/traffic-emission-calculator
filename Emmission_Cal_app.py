@@ -50,7 +50,73 @@ tolerance = st.sidebar.number_input("Tolerance", value=0.005, format="%.3f")
 ncore = st.sidebar.number_input("Number of Cores", value=8, min_value=1, max_value=16)
 
 # Tabs
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Data Preview", "⚙️ Calculate Emissions", "🗺️ Emission Map", "📥 Download Results"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📖 Instructions", "📊 Data Preview", "⚙️ Calculate Emissions", "🗺️ Emission Map", "📥 Download Results"])
+
+with tab1:
+    st.header("📖 User Guide & Instructions")
+    
+    # Try to load from GitHub
+    instructions_url = "https://github.com/Olusammi/traffic-emission-calculator/blob/70b3bfee7615b156055cc630e5439aa443956d9b/instruction.md"
+    
+    try:
+        import requests
+        response = requests.get(instructions_url, timeout=5)
+        if response.status_code == 200:
+            st.markdown(response.text)
+            st.success("✅ Instructions loaded from GitHub")
+        else:
+            # Fallback to local file
+            try:
+                with open("instructions.md", "r", encoding="utf-8") as f:
+                    st.markdown(f.read())
+                st.info("📄 Instructions loaded from local file")
+            except FileNotFoundError:
+                # Show basic instructions if neither source is available
+                st.warning("⚠️ Detailed instructions file not found. Showing basic guide...")
+                st.markdown("""
+                ## Quick Start Guide
+                
+                ### 1️⃣ Upload Required Files
+                Use the sidebar to upload all necessary files:
+                - 4 COPERT parameter CSV files
+                - Link OSM data file (7 columns)
+                - OSM network file (.osm)
+                - 6 vehicle proportion files
+                
+                ### 2️⃣ Preview Your Data
+                Go to "Data Preview" tab to verify your uploaded data looks correct.
+                
+                ### 3️⃣ Calculate Emissions
+                Click the "Calculate Emissions" button and wait for processing to complete.
+                
+                ### 4️⃣ Visualize Results
+                Choose from 3 visualization modes:
+                - **Classic**: Original simple view
+                - **Enhanced**: Smart labels and better visibility
+                - **Custom**: Full control over all settings
+                
+                ### 5️⃣ Download Results
+                Download your emission data as CSV, map as PNG, or complete ZIP archive.
+                
+                ---
+                
+                **For detailed instructions**: Place `instructions.md` in the same folder as this app,
+                or update the GitHub URL in the code to point to your repository.
+                
+                **File Format Requirements**:
+                - Link OSM data: 7 space-separated columns (OSM_ID, Length_km, Flow, Speed, Gasoline_Prop, PC_Prop, 4Stroke_Prop)
+                - Proportion files: Single column of decimal values (0-1)
+                - OSM file: Standard OpenStreetMap XML format
+                """)
+    except Exception as e:
+        # Fallback if requests fails
+        try:
+            with open("instructions.md", "r", encoding="utf-8") as f:
+                st.markdown(f.read())
+            st.info("📄 Instructions loaded from local file")
+        except FileNotFoundError:
+            st.warning("⚠️ Could not load instructions. Place instructions.md in the app directory.")
+            st.markdown("## Basic Usage\n\n1. Upload all required files\n2. Calculate emissions\n3. Generate visualization\n4. Download results")
 
 with tab1:
     st.header("Data Preview")
