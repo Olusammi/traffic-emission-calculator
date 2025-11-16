@@ -581,15 +581,252 @@ with tab3:
                                                     break
                                         
                                         if not too_close:
-                                            # Calculate angle of road segment for rotation
-                                            angle = 0
-                                            if rotate_labels and len(refs) > 1:
-                                                dx = refs[min(center_index + 1, len(refs) - 1)][0] - refs[max(center_index - 1, 0)][0]
-                                                dy = refs[min(center_index + 1, len(refs) - 1)][1] - refs[max(center_index - 1, 0)][1]
-                                                angle = np.degrees(np.arctan2(dy, dx))
-                                                
-                                                # Keep text readable (not upside down)
-                                                if angle > 90:
-                                                    angle -= 180
-                                                elif angle < -90:
-                                                    angle += 180
+                                        # Calculate angle of road segment for rotation
+                                        angle = 0
+                                        if rotate_labels and len(refs) > 1:
+                                            dx = refs[min(center_index + 1, len(refs) - 1)][0] - refs[max(center_index - 1, 0)][0]
+                                            dy = refs[min(center_index + 1, len(refs) - 1)][1] - refs[max(center_index - 1, 0)][1]
+                                            angle = np.degrees(np.arctan2(dy, dx))
+                                            
+                                            # Keep text readable (not upside down)
+                                            if angle > 90:
+                                                angle -= 180
+                                            elif angle < -90:
+                                                angle += 180
+                                        
+                                        # Add text label with better styling
+                                        ax.text(x_center, y_center, str(name),
+                                                fontsize=7,
+                                                color='black',
+                                                ha='center', 
+                                                va='center',
+                                                rotation=angle,
+                                                rotation_mode='anchor',
+                                                bbox=dict(
+                                                    facecolor='white', 
+                                                    alpha=0.8, 
+                                                    edgecolor='lightgray',
+                                                    linewidth=0.5,
+                                                    boxstyle='round,pad=0.3'
+                                                ),
+                                                zorder=100)  # Ensure labels are on top
+                                        
+                                        # Record this label position
+                                        if name not in labeled_roads:
+                                            labeled_roads[name] = []
+                                        labeled_roads[name].append((x_center, y_center))
+
+                            # Finalize plot
+                            ax.set_xlim(x_min, x_max)
+                            ax.set_ylim(y_min, y_max)
+                            ax.set_title("Emission Factor Map with Road Names", fontsize=14, fontweight='bold')
+                            ax.set_xlabel("Longitude", fontsize=12)
+                            ax.set_ylabel("Latitude", fontsize=12)
+                            ax.grid(True, alpha=0.2, linestyle='--', linewidth=0.5)
+                            
+                            # Add background color
+                            ax.set_facecolor('#f0f0f0')
+
+                            st.pyplot(fig)
+
+                            # Store figure in session state for download
+                            st.session_state.emission_map_fig = fig
+
+                            # Statistics
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Roads with Emission Data", roads_with_data)
+                            with col2:
+                                st.metric("Roads without Data", roads_without_data)
+                            with col3:
+                                st.metric("Unique Road Names Labeled", len(labeled_roads))
+
+                            status_text.empty()
+                            st.success("✅ Map generated successfully!")
+
+                        finally:
+                            # Clean up temp file
+                            if os.path.exists(osm_path):
+                                os.unlink(osm_path)
+
+                    else:
+                        # Simplified visualization without OSM parsing
+                        st.warning("Generating simplified map without OSM network parsing...")
+
+                        max_emission_value = np.max(hot_emission)
+                        color_scale = colors.Normalize(vmin=0, vmax=max_emission_value)
+
+                        fig = plt.figure(figsize=(fig_size, fig_size - 1), dpi=100)
+                        ax = fig.add_axes([0.1, 0.1, 0.75, 0.75])
+                        ax.set_aspect("equal", adjustable="box")
+
+                        # Colorbar
+                        ax_c = fig.add_axes([0.85, 0.21, 0.03, 0.53])
+                        cb = matplotlib.colorbar.ColorbarBase(
+                            ax_c, cmap=plt.cm.get_cmap(colormap),
+                            norm=color_scale,
+                            orientation="vertical"
+                        )
+                        cb.set_label("g/km")
+
+                        ax.set_xlim(x_min, x_max)
+                        ax.set_ylim(y_min, y_max)
+                        ax.set_title("Emission Factor Map (Simplified)")
+                        ax.set_xlabel("Longitude")
+                        ax.set_ylabel("Latitude")
+                        ax.grid(True, alpha=0.3)
+
+                        # Plot emission distribution as scatter
+                        scatter = ax.scatter(
+                            np.random.uniform(x_min, x_max, len(hot_emission)),
+                            np.random.uniform(y_min, y_max, len(hot_emission)),
+                            c=hot_emission,
+                            cmap=colormap,
+                            s=50,
+                            alpha=0.6
+                        )
+
+                        ax.text(0.5, 0.95, 'Install osm_network module for full road network visualization',
+                                transform=ax.transAxes, ha='center', va='top',
+                                fontsize=10, bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.7))
+
+                        st.pyplot(fig)
+                        st.session_state.emission_map_fig = fig
+                        st.info("💡 Install 'osm_network' module for complete road network visualization")
+
+                except Exception as e:
+                    st.error(f"Error generating map: {e}")
+                    import traceback
+                    st.code(traceback.format_exc())
+
+with tab4:
+    st.header("Download Results")
+
+    st.markdown("### 📊 Available Outputs")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**Emission Data**")
+        if 'hot_emission' in st.session_state:
+            data_link = st.session_state.data_link
+            hot_emission = st.session_state.hot_emission
+
+            # Create CSV data
+            results_df = pd.DataFrame({
+                'OSM_ID': data_link[:, 0].astype(int),
+                'Length_km': data_link[:, 1],
+                'Emission_g_km': hot_emission
+            })
+            csv = results_df.to_csv(index=False)
+
+            st.download_button(
+                label="⬇️ Download Emission Data CSV",
+                data=csv,
+                file_name="link_hot_emission_factor.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("Calculate emissions first to download data")
+
+    with col2:
+        st.markdown("**Emission Map**")
+        if 'emission_map_fig' in st.session_state:
+            # Save figure to bytes
+            buf = BytesIO()
+            st.session_state.emission_map_fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+            buf.seek(0)
+
+            st.download_button(
+                label="⬇️ Download Map PNG",
+                data=buf,
+                file_name="emission_factor_map.png",
+                mime="image/png"
+            )
+        else:
+            st.info("Generate map first to download image")
+
+    st.markdown("---")
+    st.markdown("### 📦 Download All Results")
+
+    if 'hot_emission' in st.session_state:
+        if st.button("📦 Create ZIP Archive"):
+            with st.spinner("Creating ZIP archive..."):
+                try:
+                    zip_buffer = BytesIO()
+
+                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                        # Add emission CSV
+                        data_link = st.session_state.data_link
+                        hot_emission = st.session_state.hot_emission
+                        hot_emission_pc = st.session_state.hot_emission_pc
+                        hot_emission_m = st.session_state.hot_emission_m
+
+                        results_df = pd.DataFrame({
+                            'OSM_ID': data_link[:, 0].astype(int),
+                            'Length_km': data_link[:, 1],
+                            'Hot_Emission_PC_g_km': hot_emission_pc,
+                            'Hot_Emission_Motorcycle_g_km': hot_emission_m,
+                            'Total_Emission_g_km': hot_emission
+                        })
+                        csv_data = results_df.to_csv(index=False)
+                        zip_file.writestr('link_hot_emission_factor.csv', csv_data)
+
+                        # Add map if available
+                        if 'emission_map_fig' in st.session_state:
+                            map_buf = BytesIO()
+                            st.session_state.emission_map_fig.savefig(map_buf, format='png', dpi=150,
+                                                                      bbox_inches='tight')
+                            map_buf.seek(0)
+                            zip_file.writestr('emission_factor_map.png', map_buf.read())
+
+                        # Add summary report
+                        summary = f"""Emission Calculation Summary
+==================================
+
+Total Links Analyzed: {len(hot_emission)}
+Total PC Emissions: {hot_emission_pc.sum():.2f} g/km
+Total Motorcycle Emissions: {hot_emission_m.sum():.2f} g/km
+Total Emissions: {hot_emission.sum():.2f} g/km
+
+Average Emission per Link: {hot_emission.mean():.2f} g/km
+Maximum Emission: {hot_emission.max():.2f} g/km
+Minimum Emission: {hot_emission.min():.2f} g/km
+
+Map Boundaries:
+- Longitude: {x_min} to {x_max}
+- Latitude: {y_min} to {y_max}
+"""
+                        zip_file.writestr('summary.txt', summary)
+
+                    zip_buffer.seek(0)
+
+                    st.download_button(
+                        label="⬇️ Download Complete Results (ZIP)",
+                        data=zip_buffer,
+                        file_name="emission_results.zip",
+                        mime="application/zip"
+                    )
+
+                    st.success("✅ ZIP archive created successfully!")
+
+                except Exception as e:
+                    st.error(f"Error creating ZIP: {e}")
+    else:
+        st.info("Calculate emissions first to create ZIP archive")
+
+# Footer
+st.sidebar.markdown("---")
+st.sidebar.markdown("**📖 Instructions:**")
+st.sidebar.markdown("""
+1. Upload all COPERT parameter files
+2. Upload link OSM data (7 columns)
+3. Upload proportion data files
+4. Upload OSM network file
+5. Configure map parameters
+6. Calculate emissions
+7. Adjust visualization settings
+8. Generate and download results
+""")
+
+st.sidebar.info("Built with Streamlit by SHassan 🎈")
