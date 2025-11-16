@@ -90,14 +90,15 @@ class HighwayCollection():
             if highway_tag in ['footway', 'path', 'cycleway']:
                  return
             
-            # Check if w.node_refs is available (it should be, but without locations)
-            # We rely on Phase 3 to filter ways outside the domain.
-            if w.node_refs:
+            # FIX: Access nodes directly from the way object
+            # In osmium SimpleHandler, way.nodes contains the node references
+            if len(w.nodes) > 0:
                 # Capture the name and type from the tags
                 highway_name = w.tags.get('name', '')
                 highway_type = w.tags.get('highway', '')
                 
-                self.point.append([n.ref for n in w.node_refs])
+                # Extract node references from w.nodes
+                self.point.append([n.ref for n in w.nodes])
                 self.osmid.append(w.id)
                 # NEW: Append the collected tags
                 self.name.append(highway_name)
@@ -121,12 +122,11 @@ def retrieve_highway(osm_file, zone, tolerance, ncore):
     
     # Simple handler for nodes/points
     class PointHandler(osmium.simple_handler.SimpleHandler):
-        def __init__(self, collection_obj): # Accepts collection object
+        def __init__(self, collection_obj):
             super().__init__()
-            self.point_collection = collection_obj # Store it here
+            self.point_collection = collection_obj
 
         def node(self, n):
-            # Use the stored collection object to call select
             self.point_collection.select(n)
 
     # Instantiate Point handler and apply the file for node extraction
@@ -139,22 +139,17 @@ def retrieve_highway(osm_file, zone, tolerance, ncore):
     
     # Simple handler for ways (highways)
     class HighwayHandler(osmium.simple_handler.SimpleHandler):
-        def __init__(self, collection_obj): # Accepts collection object
+        def __init__(self, collection_obj):
             super().__init__()
-            self.highway_collection = collection_obj # Store it here
+            self.highway_collection = collection_obj
 
         def way(self, w):
-            # Use the stored collection object to call select
             self.highway_collection.select(w)
 
-    # Instantiate Highway handler and apply the file for way extraction
-    highway_handler = HighwayHandler(highway_collection) 
-    # Use osmium.osm.relations to ensure full way data is available (needed for SimpleHandler)
-    # The original implementation may have relied on a global reader setup, 
-    # but explicitly requesting Way data is safer in a SimpleHandler.
-    # Note: osmium.osm.relations is not valid here. We stick to the simple_handler, 
-    # trusting that the removal of the location check is the primary fix.
-    highway_handler.apply_file(osm_file)
+    # FIX: Instantiate Highway handler and apply the file
+    # Use locations=False and idx parameter for proper way parsing
+    highway_handler = HighwayHandler(highway_collection)
+    highway_handler.apply_file(osm_file, locations=False, idx='flex_mem')
 
     
     # --- PHASE 3: Process results and align data (Implicitly filters by domain) ---
