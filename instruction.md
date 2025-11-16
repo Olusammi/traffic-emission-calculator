@@ -157,7 +157,13 @@ The Streamlit app requires a **space-separated .dat file**.
 
 ### 6.1. File Acquisition and Upload
 
-1. **Upload:** Navigate to the sidebar of the web application. Use the dedicated sections to upload **all 11 required files**: ###[Download Here](https://drive.google.com/drive/folders/1KCu8y-mZ0XtBc6icFlvPnJMxLFM7YCKY?usp=sharing)
+### 6.1. File Acquisition and Upload
+
+1. **File Acquisition:** All necessary COPERT parameter and Vehicle Proportion files must be downloaded first.
+
+### [Download Here](https://drive.google.com/drive/folders/1KCu8y-mZ0XtBc6icFlfPnJMxLFM7YCKY?usp=sharing)
+
+2. **Upload:** Navigate to the sidebar of the web application. Use the dedicated sections to upload **all 11 required files**, including your `link_osm.dat` and the 10 auxiliary files you just downloaded.
    - 4 COPERT Parameter Files (PC, LDV, HDV, Moto)
    - 1 Link OSM Data file (`link_osm.dat`)
    - 1 OSM Network file (`network.osm`)
