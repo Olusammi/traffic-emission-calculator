@@ -56,7 +56,10 @@ with tab1:
     st.header("📖 User Guide & Instructions")
     
     # Try to load from GitHub
-    instructions_url = "https://github.com/Olusammi/traffic-emission-calculator/blob/12b402113b474a8fb574a5e6a71c57a2f61f7738/instruction.md"
+    #instructions_url = "https://github.com/Olusammi/traffic-emission-calculator/blob/12b402113b474a8fb574a5e6a71c57a2f61f7738/instruction.md"
+    # You can simply do:
+with open("instructions.md", "r", encoding="utf-8") as f:
+    st.markdown(f.read())
     
     try:
         import requests
@@ -592,4 +595,5 @@ st.sidebar.markdown("""
 9. Download results
 """)
 st.sidebar.info("Built with Streamlit by SHassan 🎈")
+
 
