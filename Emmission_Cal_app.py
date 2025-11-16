@@ -17,6 +17,23 @@ st.title("🚗 Traffic Emission Calculator with OSM Visualization")
 st.caption("Built by SHassan")
 st.markdown("Upload your input files to calculate and visualize traffic emissions")
 
+# Content of the instruction tab (loaded from instructions_tab.md)
+INSTRUCTION_CONTENT = """
+# 🏭 Emission Calculation and Visualization Workflow
+
+Welcome to the Emission Calculation and Visualization App! This tab provides detailed instructions on the entire process, starting with the necessary geospatial data preparation in QGIS and ending with the interpretation of the visualized emission factors.
+
+This workflow is divided into three main stages: **QGIS Geospatial Data Preparation**, **Data Conversion and Formatting**, and **App Usage & Visualization**.
+
+## Stage 1: QGIS Geospatial Data Preparation (Street Network Modeling)
+
+This stage involves preparing the street network data, merging layers, and calculating the required variables within a Geographic Information System (GIS) environment (QGIS).
+
+### I. Install QGIS
+
+Ensure QGIS (a free and open-source Geographic Information System) is inst...
+"""
+
 # Sidebar for file uploads
 st.sidebar.header("📂 Upload Input Files")
 
@@ -301,97 +318,38 @@ with tab3:
     else:
         st.info("📍 Ready to generate emission map")
 
-        # === VISUALIZATION MODE SELECTOR ===
-        st.subheader("🎨 Visualization Mode")
-        viz_mode = st.radio(
-            "Select visualization style:",
-            ["Classic (Original)", "Enhanced with Labels", "Custom"],
-            horizontal=True,
-            help="Classic: Original simple view | Enhanced: Smart road labels | Custom: Full control"
-        )
+        # Map visualization settings
+        st.subheader("Map Visualization Settings")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            colormap = st.selectbox("Color Map", ['jet', 'viridis', 'plasma', 'RdYlGn_r', 'hot', 'coolwarm'], index=0)
+            fig_size = st.slider("Figure Size", 8, 16, 12)
+            line_width_multiplier = st.slider("Line Width Scale", 0.5, 5.0, 2.0, 0.5)
+
+        with col2:
+            label_density = st.selectbox(
+                "Road Label Density", 
+                ["Minimal (Major roads only)", "Medium (Top 25% emissions)", "High (Top 50% emissions)"],
+                index=1
+            )
+            show_minor_roads = st.checkbox("Show roads without emission data", value=True)
+            rotate_labels = st.checkbox("Rotate labels along roads", value=True)
 
         st.markdown("---")
 
-        # === CONFIGURATION BASED ON MODE ===
-        if viz_mode == "Classic (Original)":
-            st.markdown("**Classic Mode Settings**")
-            col1, col2 = st.columns(2)
-            with col1:
-                colormap = st.selectbox("Color Map", ['jet', 'viridis', 'plasma', 'RdYlGn_r', 'hot'], index=0)
-                fig_size = st.slider("Figure Size", 8, 16, 10)
-            with col2:
-                show_roads_without_data = st.checkbox("Show roads without emission data", value=False, 
-                                                      help="Black lines for roads without data")
-                add_grid = st.checkbox("Add grid lines", value=False)
-            
-            # Classic mode defaults
-            line_width_multiplier = 1.0
-            show_labels = False
-            label_density = "Minimal (Major roads only)"
-            rotate_labels = False
-            enhanced_styling = False
+        # Convert label density selection to threshold
+        if label_density == "Minimal (Major roads only)":
+            emission_percentile = 90
+            major_only = True
+        elif label_density == "Medium (Top 25% emissions)":
+            emission_percentile = 75
+            major_only = False
+        else:  # High
+            emission_percentile = 50
+            major_only = False
 
-        elif viz_mode == "Enhanced with Labels":
-            st.markdown("**Enhanced Mode Settings**")
-            col1, col2 = st.columns(2)
-            with col1:
-                colormap = st.selectbox("Color Map", ['jet', 'viridis', 'plasma', 'RdYlGn_r', 'hot', 'coolwarm'], index=0)
-                fig_size = st.slider("Figure Size", 8, 16, 12)
-                line_width_multiplier = st.slider("Line Width Scale", 0.5, 5.0, 2.0, 0.5)
-            with col2:
-                label_density = st.selectbox(
-                    "Road Label Density", 
-                    ["Minimal (Major roads only)", "Medium (Top 25% emissions)", "High (Top 50% emissions)"],
-                    index=1
-                )
-                show_roads_without_data = st.checkbox("Show roads without emission data", value=True)
-                rotate_labels = st.checkbox("Rotate labels along roads", value=True)
-            
-            # Enhanced mode settings
-            show_labels = True
-            enhanced_styling = True
-            add_grid = True
-
-        else:  # Custom mode
-            st.markdown("**Custom Mode Settings**")
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.markdown("**Appearance**")
-                colormap = st.selectbox("Color Map", ['jet', 'viridis', 'plasma', 'RdYlGn_r', 'hot', 'coolwarm', 'inferno'], index=0)
-                fig_size = st.slider("Figure Size", 8, 20, 12)
-                line_width_multiplier = st.slider("Line Width Scale", 0.1, 10.0, 2.0, 0.5)
-                enhanced_styling = st.checkbox("Enhanced styling (background, transparency)", value=True)
-            
-            with col2:
-                st.markdown("**Road Display**")
-                show_roads_without_data = st.checkbox("Show roads without emission data", value=True)
-                road_transparency = st.slider("Road transparency", 0.0, 1.0, 0.8, 0.1)
-                add_grid = st.checkbox("Add grid lines", value=True)
-                grid_alpha = st.slider("Grid transparency", 0.0, 1.0, 0.2, 0.1) if add_grid else 0.2
-            
-            with col3:
-                st.markdown("**Labels**")
-                show_labels = st.checkbox("Show road labels", value=True)
-                if show_labels:
-                    label_density = st.selectbox(
-                        "Label Density", 
-                        ["Minimal (Major roads only)", "Medium (Top 25% emissions)", "High (Top 50% emissions)", "Maximum (All named roads)"],
-                        index=1
-                    )
-                    rotate_labels = st.checkbox("Rotate labels along roads", value=True)
-                    label_font_size = st.slider("Label font size", 4, 12, 7)
-                    min_label_distance = st.slider("Min distance between labels", 0.001, 0.01, 0.002, 0.001)
-                else:
-                    label_density = "Minimal (Major roads only)"
-                    rotate_labels = False
-                    label_font_size = 7
-                    min_label_distance = 0.002
-
-        st.markdown("---")
-
-        # === GENERATE MAP BUTTON ===
-        if st.button("🗺️ Generate Map", type="primary", use_container_width=True):
+        if st.button("🗺️ Generate Map", type="primary"):
             with st.spinner("Generating emission map..."):
                 try:
                     # Check if osm_network module is available
@@ -428,7 +386,7 @@ with tab3:
                             status_text = st.empty()
                             status_text.text("Parsing OSM network...")
 
-                            # Get 4 return values from fixed osm_network
+                            # Now correctly expecting 4 return values from the fixed osm_network.py
                             highway_coordinate, highway_osmid, highway_names, highway_types = osm_network.retrieve_highway(
                                 osm_path, selected_zone, tolerance, int(ncore)
                             )
@@ -438,17 +396,11 @@ with tab3:
                             max_emission_value = np.max(hot_emission)
                             epsilon = 1e-9
 
-                            # Line width settings based on mode
-                            if viz_mode == "Classic (Original)":
-                                lw_max = 0.00004
-                                lw_min = 0.00002
-                                width_scaling = (lw_max - lw_min) / (max_emission_value + epsilon) + lw_min
-                                lw_nodata = 0.003
-                            else:
-                                lw_max = 3.0 * line_width_multiplier
-                                lw_min = 0.5 * line_width_multiplier
-                                width_scaling = (lw_max - lw_min) / (max_emission_value + epsilon)
-                                lw_nodata = 0.3
+                            # IMPROVED: Better line width scaling to make emissions more visible
+                            lw_max = 3.0 * line_width_multiplier
+                            lw_min = 0.5 * line_width_multiplier
+                            width_scaling = (lw_max - lw_min) / (max_emission_value + epsilon)
+                            lw_nodata = 0.3  # Roads without emission data
 
                             color_scale = colors.Normalize(vmin=0, vmax=max_emission_value + epsilon)
                             scale_map = cmx.ScalarMappable(norm=color_scale, cmap=colormap)
@@ -471,17 +423,14 @@ with tab3:
                             )
                             cb.set_label("g/km", fontsize=12)
 
-                            # Apply enhanced styling if enabled
-                            if enhanced_styling:
-                                ax.set_facecolor('#f0f0f0')
-
                             # Plot highways
                             status_text.text("Plotting emission data on map...")
                             roads_with_data = 0
                             roads_without_data = 0
 
-                            # Determine transparency
-                            alpha_value = road_transparency if viz_mode == "Custom" else (0.8 if enhanced_styling else 1.0)
+                            # IMPROVED: Collect road labels to avoid overlaps
+                            labeled_roads = {}  # Store positions of already labeled roads
+                            min_label_distance = 0.002  # Minimum distance between labels (in lat/lon)
 
                             # First pass: Plot all roads
                             for refs, osmid, name, highway_type in zip(highway_coordinate, highway_osmid, 
@@ -495,94 +444,61 @@ with tab3:
                                     current_emission = hot_emission[i]
                                     color_value = scale_map.to_rgba(current_emission)
                                     
-                                    # Calculate line width
-                                    if viz_mode == "Classic (Original)":
-                                        line_width = current_emission * width_scaling
-                                    else:
-                                        line_width = lw_min + (current_emission * width_scaling)
+                                    # IMPROVED: Better line width calculation
+                                    line_width = lw_min + (current_emission * width_scaling)
                                     
-                                    # Plot road with emission data
-                                    plot_kwargs = {
-                                        'color': color_value,
-                                        'lw': line_width,
-                                        'alpha': alpha_value
-                                    }
-                                    if enhanced_styling:
-                                        plot_kwargs['solid_capstyle'] = 'round'
-                                    
-                                    ax.plot([x[0] for x in refs], [x[1] for x in refs], **plot_kwargs)
+                                    ax.plot([x[0] for x in refs], [x[1] for x in refs],
+                                            color=color_value,
+                                            lw=line_width,
+                                            alpha=0.8,  # Added transparency
+                                            solid_capstyle='round')  # Smoother line ends
                                     roads_with_data += 1
                                 else:
-                                    # Roads without emission data
-                                    if show_roads_without_data:
-                                        if viz_mode == "Classic (Original)":
-                                            ax.plot([x[0] for x in refs], [x[1] for x in refs],
-                                                    "k-", lw=lw_nodata)
-                                        else:
-                                            ax.plot([x[0] for x in refs], [x[1] for x in refs],
-                                                    "gray", lw=lw_nodata, alpha=0.3)
+                                    if show_minor_roads:
+                                        ax.plot([x[0] for x in refs], [x[1] for x in refs],
+                                                "gray", lw=lw_nodata, alpha=0.3)
                                         roads_without_data += 1
 
-                            # Second pass: Smart road labeling (if enabled)
-                            if show_labels and viz_mode != "Classic (Original)":
-                                labeled_roads = {}
-                                major_road_types = ['motorway', 'trunk', 'primary', 'secondary']
+                            # IMPROVED: Second pass - Smart road labeling
+                            # Only label major roads with high emissions or important road types
+                            major_road_types = ['motorway', 'trunk', 'primary', 'secondary']
+                            emission_threshold = np.percentile(hot_emission, emission_percentile)
+                            
+                            for refs, osmid, name, highway_type in zip(highway_coordinate, highway_osmid, 
+                                                                       highway_names, highway_types):
+                                try:
+                                    i = emission_osm_id.index(osmid)
+                                    current_emission = hot_emission[i]
+                                except:
+                                    continue
                                 
-                                # Determine emission threshold based on label density
-                                if label_density == "Minimal (Major roads only)":
-                                    emission_percentile = 90
-                                    major_only = True
-                                elif label_density == "Medium (Top 25% emissions)":
-                                    emission_percentile = 75
-                                    major_only = False
-                                elif label_density == "High (Top 50% emissions)":
-                                    emission_percentile = 50
-                                    major_only = False
-                                else:  # Maximum
-                                    emission_percentile = 0
-                                    major_only = False
+                                # Determine if we should label this road
+                                if major_only:
+                                    should_label = name and highway_type in major_road_types
+                                else:
+                                    should_label = (
+                                        name and 
+                                        (highway_type in major_road_types or current_emission >= emission_threshold)
+                                    )
                                 
-                                emission_threshold = np.percentile(hot_emission, emission_percentile)
-                                
-                                # Get min_label_distance from custom settings or use default
-                                min_dist = min_label_distance if viz_mode == "Custom" and show_labels else 0.002
-                                font_size = label_font_size if viz_mode == "Custom" and show_labels else 7
-                                
-                                for refs, osmid, name, highway_type in zip(highway_coordinate, highway_osmid, 
-                                                                           highway_names, highway_types):
-                                    try:
-                                        i = emission_osm_id.index(osmid)
-                                        current_emission = hot_emission[i]
-                                    except:
-                                        continue
+                                if should_label:
+                                    # Calculate center point
+                                    center_index = len(refs) // 2
+                                    x_center = refs[center_index][0]
+                                    y_center = refs[center_index][1]
                                     
-                                    # Determine if we should label this road
-                                    if major_only:
-                                        should_label = name and highway_type in major_road_types
-                                    else:
-                                        should_label = (
-                                            name and 
-                                            (highway_type in major_road_types or current_emission >= emission_threshold)
-                                        )
+                                    # Check if we already labeled this road nearby
+                                    too_close = False
+                                    if name in labeled_roads:
+                                        for prev_x, prev_y in labeled_roads[name]:
+                                            distance = np.sqrt((x_center - prev_x)**2 + (y_center - prev_y)**2)
+                                            if distance < min_label_distance:
+                                                too_close = True
+                                                break
                                     
-                                    if should_label:
-                                        # Calculate center point
-                                        center_index = len(refs) // 2
-                                        x_center = refs[center_index][0]
-                                        y_center = refs[center_index][1]
-                                        
-                                        # Check if we already labeled this road nearby
-                                        too_close = False
-                                        if name in labeled_roads:
-                                            for prev_x, prev_y in labeled_roads[name]:
-                                                distance = np.sqrt((x_center - prev_x)**2 + (y_center - prev_y)**2)
-                                                if distance < min_dist:
-                                                    too_close = True
-                                                    break
-                                        
                                     if not too_close:
                                         # Calculate angle of road segment for rotation
-                                            angle = 0
+                                        angle = 0
                                         if rotate_labels and len(refs) > 1:
                                             dx = refs[min(center_index + 1, len(refs) - 1)][0] - refs[max(center_index - 1, 0)][0]
                                             dy = refs[min(center_index + 1, len(refs) - 1)][1] - refs[max(center_index - 1, 0)][1]
@@ -830,4 +746,3 @@ st.sidebar.markdown("""
 """)
 
 st.sidebar.info("Built with Streamlit by SHassan 🎈")
-
