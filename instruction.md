@@ -36,7 +36,7 @@ You must provide your own **road link data** and utilize the provided **COPERT/P
 >
 > All necessary COPERT parameter and Vehicle Proportion files must be downloaded before running the app. You can find them here:
 >
-> **[Download All Required Auxiliary Input Files (Google Drive Link)]** *(Replace this text with your actual download link)*
+> **Download All Required Auxiliary Input Files **[Download Here](https://drive.google.com/drive/folders/1KCu8y-mZ0XtBc6icFlvPnJMxLFM7YCKY?usp=sharing)**
 
 ---
 
