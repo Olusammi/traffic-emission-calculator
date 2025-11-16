@@ -362,8 +362,7 @@ with tab3:
                             status_text = st.empty()
                             status_text.text("Parsing OSM network...")
 
-                            # MODIFICATION 1: Update to retrieve road names (name) and types (highway_type)
-                            # NOTE: This assumes your custom 'osm_network' module has been updated to return these.
+                            # Now correctly expecting 4 return values from the fixed osm_network.py
                             highway_coordinate, highway_osmid, highway_names, highway_types = osm_network.retrieve_highway(
                                 osm_path, selected_zone, tolerance, int(ncore)
                             )
@@ -404,7 +403,7 @@ with tab3:
                             roads_with_data = 0
                             roads_without_data = 0
 
-                            # MODIFICATION 2: Update loop to unpack names and types
+                            # Loop now unpacks all 4 values for plotting and labeling
                             for refs, osmid, name, highway_type in zip(highway_coordinate, highway_osmid, highway_names, highway_types):
                                 try:
                                     i = emission_osm_id.index(osmid)
@@ -418,9 +417,8 @@ with tab3:
                                             color=color_value,
                                             lw=current_emission * width_scaling)
 
-                                    # MODIFICATION 3: NEW CODE FOR LABELING ROAD NAMES
+                                    # IMPLEMENTATION OF ROAD NAME LABELING
                                     # Only label named roads of a major type (to prevent map clutter)
-                                    # Common major road types from OSM: motorway, trunk, primary, secondary
                                     if name and highway_type in ['motorway', 'trunk', 'primary', 'secondary']:
                                         # Calculate center point for text placement
                                         center_index = len(refs) // 2
@@ -432,7 +430,7 @@ with tab3:
                                                 fontsize=6, color='black',
                                                 ha='center', va='center',
                                                 bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', boxstyle='round,pad=0.1'))
-                                    # END NEW CODE
+                                    # END IMPLEMENTATION
 
                                     roads_with_data += 1
                                 else:
