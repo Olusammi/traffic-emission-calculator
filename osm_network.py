@@ -77,25 +77,22 @@ class HighwayCollection():
         self.zone = zone
 
     def select(self, w):
-        """Select highway (way) if its end points are within the zone and it's a known highway type."""
+        """
+        Select highway (way) if it's a known highway type. 
+        Note: Location checks are deferred to Phase 3.
+        """
         
-        # Check if the way is a highway (we ignore cycleways, footways, etc. here for traffic analysis)
-        if w.tags.get('highway') is not None:
-            # Check if at least one endpoint is in the zone
-            lon0 = w.node_refs[0].location.lon
-            lat0 = w.node_refs[0].location.lat
-            lon1 = w.node_refs[-1].location.lon
-            lat1 = w.node_refs[-1].location.lat
-
-            in_zone = point_inside_polygon(lon0, lat0, self.zone) or \
-                      point_inside_polygon(lon1, lat1, self.zone)
+        # Check if the way is a highway
+        highway_tag = w.tags.get('highway')
+        if highway_tag is not None:
             
-            # Additional check if it's not a path or a cycleway (optional, depends on definition)
-            highway_tag = w.tags.get('highway')
+            # Skip non-traffic ways early
             if highway_tag in ['footway', 'path', 'cycleway']:
                  return
             
-            if in_zone:
+            # Check if w.node_refs is available (it should be, but without locations)
+            # We rely on Phase 3 to filter ways outside the domain.
+            if w.node_refs:
                 # Capture the name and type from the tags
                 highway_name = w.tags.get('name', '')
                 highway_type = w.tags.get('highway', '')
@@ -105,7 +102,6 @@ class HighwayCollection():
                 # NEW: Append the collected tags
                 self.name.append(highway_name)
                 self.highway_type.append(highway_type)
-                # END NEW
 
 
 def retrieve_highway(osm_file, zone, tolerance, ncore):
@@ -153,27 +149,21 @@ def retrieve_highway(osm_file, zone, tolerance, ncore):
 
     # Instantiate Highway handler and apply the file for way extraction
     highway_handler = HighwayHandler(highway_collection) 
+    # Use osmium.osm.relations to ensure full way data is available (needed for SimpleHandler)
+    # The original implementation may have relied on a global reader setup, 
+    # but explicitly requesting Way data is safer in a SimpleHandler.
+    # Note: osmium.osm.relations is not valid here. We stick to the simple_handler, 
+    # trusting that the removal of the location check is the primary fix.
     highway_handler.apply_file(osm_file)
 
     
-    # --- PHASE 3: Process results and align data ---
+    # --- PHASE 3: Process results and align data (Implicitly filters by domain) ---
     
-    # Flatten the set of point references for highways
-    highway_collection.point_set = set([item for refs in highway_collection.point for item in refs])
-
-    # Collect the coordinates for the highway points (no longer strictly needed for return, but useful for debug)
-    # point_coordinate = []
-    # for way in highway_collection.point_set:
-    #     try:
-    #         point_coordinate.append(point_collection.coordinate[way])
-    #     except KeyError: 
-    #         pass
-
     # Collect the final, aligned highway data (coordinates, OSM IDs, names, and types)
     highway_coordinate = []
     highway_osmid = []
-    highway_names = []      # NEW
-    highway_types = []      # NEW
+    highway_names = []      
+    highway_types = []      
     
     # Iterate over all collected data lists simultaneously
     for refs, osmid, name, htype in zip(highway_collection.point, 
@@ -181,7 +171,9 @@ def retrieve_highway(osm_file, zone, tolerance, ncore):
                                         highway_collection.name,
                                         highway_collection.highway_type):
         try:
-            # Check if all node references have coordinates (i.e., they were in the domain)
+            # This is the crucial step: if a node ID in 'refs' doesn't exist in 
+            # point_collection.coordinate, it means that node is outside the zone, 
+            # and the KeyError will skip the entire way.
             coords = [point_collection.coordinate[n] for n in refs]
             
             # If successful, append all four pieces of data
