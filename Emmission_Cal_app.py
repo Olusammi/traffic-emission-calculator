@@ -118,7 +118,7 @@ with tab1:
             st.warning("⚠️ Could not load instructions. Place instructions.md in the app directory.")
             st.markdown("## Basic Usage\n\n1. Upload all required files\n2. Calculate emissions\n3. Generate visualization\n4. Download results")
 
-with tab1:
+with tab2:
     st.header("Data Preview")
     if link_osm is not None:
         st.subheader("Link OSM Data")
@@ -146,7 +146,7 @@ with tab1:
     else:
         st.info("👆 Please upload Link OSM Data file in the sidebar")
 
-with tab2:
+with tab3:
     st.header("Calculate Emissions")
     required_files = [pc_param, ldv_param, hdv_param, moto_param, link_osm,
                       engine_cap_gas, engine_cap_diesel, copert_class_gas,
@@ -269,7 +269,7 @@ with tab2:
             if fdata is None: missing.append(fname)
         st.error(f"Missing: {', '.join(missing)}")
 
-with tab3:
+with tab4:
     st.header("Emission Factor Map")
     has_emissions = 'hot_emission' in st.session_state
     if not has_emissions:
@@ -502,7 +502,7 @@ with tab3:
                     import traceback
                     st.code(traceback.format_exc())
 
-with tab4:
+with tab5:
     st.header("Download Results")
     st.markdown("### 📊 Available Outputs")
     col1, col2 = st.columns(2)
@@ -592,6 +592,7 @@ st.sidebar.markdown("""
 9. Download results
 """)
 st.sidebar.info("Built with Streamlit by SHassan 🎈")
+
 
 
 
