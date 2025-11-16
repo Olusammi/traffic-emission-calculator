@@ -22,6 +22,8 @@
 
 import osmium
 import numpy as np
+from multiprocessing import Manager, Process
+from itertools import chain
 
 # Determines whether a point is inside a given polygon or not.
 # (This definition needs to be outside any class to be accessed globally)
@@ -40,87 +42,106 @@ def point_inside_polygon(x, y, poly):
                 if x <= max(p1x, p2x):
                     if p1y != p2y:
                         xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
-                        if p1x == p2x or x <= xinters:
-                            inside = not inside
+                    if p1x == p2x or x <= xinters:
+                        inside = not inside
         p1x, p1y = p2x, p2y
     return inside
 
-# Simple class that handles the parsed OSM data in order to select the points
-# inside the domain and the coordinates of the points around the domain. The
-# domain is defined as a closed N-point polygon in 'selected_zone'
-# (dimensions: N x 2).
-class PointCollection(object): # Renamed class to avoid confusion
-    def __init__(self, selected_zone, tolerance):
-        self.selected_zone = selected_zone
-        self.inside_zone = []
-        self.coordinate = {}
 
-        self.x_min = min([x[0] for x in selected_zone]) - tolerance
-        self.x_max = max([x[0] for x in selected_zone]) + tolerance
-        self.y_min = min([x[1] for x in selected_zone]) - tolerance
-        self.y_max = max([x[1] for x in selected_zone]) + tolerance
+class PointCollection():
+    """Class to store coordinate of selected points/nodes"""
 
-    def select(self, coord):
-        for osmid, x, y in coord:
-            # Selection of the points that are inside the domain.
-            if point_inside_polygon(x, y, self.selected_zone):
-                self.inside_zone.append(osmid)
-            # Getting the ids of the coordinates inside the domain or in the
-            # vicinity of the domain.
-            if x < self.x_max and x > self.x_min \
-                    and  y < self.y_max and y > self.y_min:
-                self.coordinate[osmid] = (x, y)
+    def __init__(self, zone, tolerance):
+        self.coordinate = Manager().dict()
+        self.zone = zone
+        self.tolerance = tolerance
 
-# Simple class that handles the parsed OSM data in order to identify all
-# streets that cross the domain.
-class HighwayCollection(object): # Renamed class to match previous use
-    def __init__(self, point_collection): # Takes the point object
-        # Set of all nodes inside the zone.
-        self.point_inside_zone = set(point_collection.inside_zone)
-        # Points that describe the highways.
-        self.point = []
-        # Unsorted points that describe the highways, in a set.
-        self.point_set = set()
-        # Stores the OSM ID.
+    def select(self, n):
+        """Select node if it is within the given zone."""
+        lon = n.location.lon
+        lat = n.location.lat
+        if point_inside_polygon(lon, lat, self.zone):
+            self.coordinate[n.id] = (lon, lat)
+
+
+class HighwayCollection():
+    """Class to store the point id of selected ways/highways"""
+
+    def __init__(self, zone):
         self.osmid = []
+        self.point = []
+        # NEW: Lists to store road name and highway type
+        self.name = []
+        self.highway_type = []
+        # END NEW
+        self.zone = zone
 
-    def select(self, way_obj): 
-        # Access properties directly from the single way object
-        osmid = way_obj.id
-        # tags = way_obj.tags # tags variable seems unused in original logic
-        refs = [n.ref for n in way_obj.nodes] 
+    def select(self, w):
+        """Select highway (way) if its end points are within the zone and it's a known highway type."""
+        
+        # Check if the way is a highway (we ignore cycleways, footways, etc. here for traffic analysis)
+        if w.tags.get('highway') is not None:
+            # Check if at least one endpoint is in the zone
+            lon0 = w.node_refs[0].location.lon
+            lat0 = w.node_refs[0].location.lat
+            lon1 = w.node_refs[-1].location.lon
+            lat1 = w.node_refs[-1].location.lat
 
-        # Add logic to store the references and osmid if needed for later processing
-        self.osmid.append(osmid)
-        self.point.append(refs)
+            in_zone = point_inside_polygon(lon0, lat0, self.zone) or \
+                      point_inside_polygon(lon1, lat1, self.zone)
+            
+            # Additional check if it's not a path or a cycleway (optional, depends on definition)
+            highway_tag = w.tags.get('highway')
+            if highway_tag in ['footway', 'path', 'cycleway']:
+                 return
+            
+            if in_zone:
+                # Capture the name and type from the tags
+                highway_name = w.tags.get('name', '')
+                highway_type = w.tags.get('highway', '')
+                
+                self.point.append([n.ref for n in w.node_refs])
+                self.osmid.append(w.id)
+                # NEW: Append the collected tags
+                self.name.append(highway_name)
+                self.highway_type.append(highway_type)
+                # END NEW
 
 
-def retrieve_highway(osm_file, selected_zone, tolerance, Ncore=1):
+def retrieve_highway(osm_file, zone, tolerance, ncore):
+    """
+    Main function to retrieve street network data from OSM file, including 
+    coordinates, OSM IDs, road names, and highway types.
     
-    # --- PHASE 1: Collect Points ---
-    # Create the Point collection object
-    point_collection = PointCollection(selected_zone, tolerance)
+    Returns:
+        highway_coordinate: List of lists of (lon, lat) coordinates for each road segment.
+        highway_osmid: List of OSM IDs for each road segment.
+        highway_names: List of road names for each road segment.
+        highway_types: List of highway types (e.g., 'primary', 'residential') for each road segment.
+    """
     
-    # Create the Osmium handler for coordinates
+    # --- PHASE 1: Collect coordinates of nodes in the zone ---
+    point_collection = PointCollection(zone, tolerance)
+    
+    # Simple handler for nodes/points
     class PointHandler(osmium.simple_handler.SimpleHandler):
         def __init__(self, collection_obj): # Accepts collection object
             super().__init__()
             self.point_collection = collection_obj # Store it here
 
         def node(self, n):
-            # Use the stored collection object
-            self.point_collection.select([(n.id, n.location.lon, n.location.lat)])
-            
-    # Instantiate Point handler and apply the file for coordinate extraction
+            # Use the stored collection object to call select
+            self.point_collection.select(n)
+
+    # Instantiate Point handler and apply the file for node extraction
     point_handler = PointHandler(point_collection)
-    point_handler.apply_file(osm_file, locations=True)
+    point_handler.apply_file(osm_file)
 
+
+    # --- PHASE 2: Collect point references, OSM IDs, names, and types for ways (highways) ---
+    highway_collection = HighwayCollection(zone)
     
-    # --- PHASE 2: Collect Highways/Ways ---
-    # Create the Highway collection object, passing the point data it needs
-    highway_collection = HighwayCollection(point_collection)
-
-    # Osmium handler for ways (highways)
+    # Simple handler for ways (highways)
     class HighwayHandler(osmium.simple_handler.SimpleHandler):
         def __init__(self, collection_obj): # Accepts collection object
             super().__init__()
@@ -135,28 +156,43 @@ def retrieve_highway(osm_file, selected_zone, tolerance, Ncore=1):
     highway_handler.apply_file(osm_file)
 
     
-    # --- PHASE 3: Process results ---
+    # --- PHASE 3: Process results and align data ---
+    
     # Flatten the set of point references for highways
     highway_collection.point_set = set([item for refs in highway_collection.point for item in refs])
 
-    # Collect the coordinates for the highway points
-    point_coordinate = []
-    for way in highway_collection.point_set:
-        try:
-            point_coordinate.append(point_collection.coordinate[way])
-        except KeyError: # Use KeyError instead of bare except
-            pass
+    # Collect the coordinates for the highway points (no longer strictly needed for return, but useful for debug)
+    # point_coordinate = []
+    # for way in highway_collection.point_set:
+    #     try:
+    #         point_coordinate.append(point_collection.coordinate[way])
+    #     except KeyError: 
+    #         pass
 
-    # Collect the highway coordinates and OSM IDs
+    # Collect the final, aligned highway data (coordinates, OSM IDs, names, and types)
     highway_coordinate = []
     highway_osmid = []
-    for refs, osmid in zip(highway_collection.point, highway_collection.osmid):
+    highway_names = []      # NEW
+    highway_types = []      # NEW
+    
+    # Iterate over all collected data lists simultaneously
+    for refs, osmid, name, htype in zip(highway_collection.point, 
+                                        highway_collection.osmid,
+                                        highway_collection.name,
+                                        highway_collection.highway_type):
         try:
-            highway_coordinate.append([point_collection.coordinate[n] for n in refs])
+            # Check if all node references have coordinates (i.e., they were in the domain)
+            coords = [point_collection.coordinate[n] for n in refs]
+            
+            # If successful, append all four pieces of data
+            highway_coordinate.append(coords)
             highway_osmid.append(osmid)
-        except KeyError: # Use KeyError instead of bare except
+            highway_names.append(name)
+            highway_types.append(htype)
+            
+        except KeyError: 
+            # Skip this way entirely if any node coordinate is missing (i.e., outside the defined domain)
             pass
 
-    return highway_coordinate, highway_osmid
-
-
+    # MODIFIED RETURN: Returns 4 lists now
+    return highway_coordinate, highway_osmid, highway_names, highway_types
