@@ -31,107 +31,8 @@ This stage involves preparing the street network data, merging layers, and calcu
 
 ### I. Install QGIS
 
-Ensure QGIS (a free and open-source Geographic Information System) is installed on your system. 
-### II. 🗺️ Street Network Data Acquisition
-
-This section focuses on using QGIS to download the relevant street data for the study area.
-
-* **Action:** Open QGIS and create a New Project. Use the map interface to zoom in to the specific geographic location intended for the emission calculation.
-
-* **Install Plugin:** Navigate to **Plugins** $\rightarrow$ **Manage and Install Plugins...** and install the **"OSM Downloader"** plugin. This is used to download map data from OpenStreetMap.
-
-* **Download Data:** Use the OSM Downloader tool. Select the **"Select Manually"** option to draw a bounding box around your required area.
-
-* **Export:** Click **Export**. Save the downloaded data file, typically as a `.json` file (e.g., `CityName_StreetNetwork.json`).
-
-### III. 🧩 Data Processing and Layer Merging
-
-The downloaded OSM data often separates network features into distinct layers. This step consolidates the road network into a single layer.
-
-* **Load Data:** Drag and drop the downloaded `.json` file into the Layers Panel. This imports the vector layers, including `lines` (single segments) and `multilines` (complex segments).
-
-* **Merge Layers:**
-
-    * Open the **Processing Toolbox** (**View** $\rightarrow$ **Panels** $\rightarrow$ **Processing Toolbox**).
-
-    * Search for and select the **"Merge Vector Layers"** tool.
-
-    * In the tool dialog, select **ONLY** the `lines` and `multilines` layers as the input to be merged.
-
-    * **Output:** The result is a new merged layer containing the complete street network.
-
-### IV. 📊 Attribute Table Calculation
-
-The new merged layer's attribute table must be structured and calculated to provide the necessary input variables for the emission model.
-
-* **Access Table:** Right-click the new merged layer and select **Open Attribute Table**.
-
-* **Add Emission Model Variables:** New fields (columns) must be added and calculated. Key variables typically include:
-
-    * $Length$: The physical length of each street segment (in meters or kilometers).
-
-    * $Flow$: The estimated vehicle count or traffic volume (vehicles/hour).
-
-    * $Speed$: The average or posted vehicle speed ($\text{km/h}$ or $\text{mi/h}$).
-
-    * $\text{Gasoline Prop}$: The proportion of gasoline-powered vehicles.
-
-    * $\text{PC Prop}$: The proportion of public cars.
-
-    * $\text{4Stroke Prop}$: The proportion of 4-stroke motorcycles.
-
-* **Action:** Calculate the required values for these fields based on the raw street geometry and any external traffic data or model assumptions.
-
-## Stage 2: Data Conversion and Formatting for App Upload
-
-The final input file for the Streamlit application must be in a very specific space-separated `.dat` format.
-
-### 1. Final Attribute Selection and CSV Export
-
-* **Action:** Delete all irrelevant columns from the attribute table. The model requires the table to be arranged in this exact format (order and column names):
-
-    $$
-    \text{OSM\_ID, Length\_km, Flow, Speed, Gasoline\_Prop, PC\_Prop, 4Stroke\_Prop}
-    $$
-
-* **Export:** Right-click the final merged layer $\rightarrow$ **Export** $\rightarrow$ **Save Feature As...**
-
-* **Format:** Choose **Comma Separated Values (CSV)**.
-
-### 2. CSV to DAT Conversion (Mandatory Steps)
-
-This conversion ensures the file can be read correctly by the calculation engine.
-
-* **A. Open in Editor:** Open the exported CSV file using a plain text editor (e.g., Notepad).
-
-* **B. Find and Replace (Separators):**
-
-    * **Find:** The CSV field separator (e.g., `,:,` or `,`) and **Replace with:** A single space (` `) to make it space-separated.
-
-    * **Find:** `"` (Double Quotes - used to enclose string values) and **Replace with:** Nothing (delete).
-
-* **C. Save as DAT:** **Save the modified file** with the exact name `link_osm.dat`. This is important for the app to recognize the input.
-
-## Stage 3: App Usage & Visualization
-
-### 1. File Acquisition and Upload
-
-* **Supporting Files:** The application requires the `link_osm.dat` file you just created alongside other supporting input files (e.g., factor tables).
-
-* **Download:** A link to download all necessary auxiliary input files for the calculation is provided below. Download them first.
-    * **Auxiliary Files:** To ensure the app runs, you need the COPERT parameter and proportion files. **Download these files** before proceeding to upload.
-
-* **Upload:** Use the **"📂 Upload Input Files"** sidebar sections in this web app to upload **all** the required files, including your prepared `link_osm.dat`.
-
-### 2. Calculation and Visualization
-
-* **Action:** Once all files are uploaded, navigate to the **"⚙️ Calculate Emissions"** tab.
-
-* **Run:** The app will use the data from your `link_osm.dat` and the provided factor files to run the emission model and generate the output.
-
-* **Plotting:** Proceed to the **"🗺️ Emission Map"** tab for plotting the results and interpreting the calculated emission factors. The results can be downloaded from the **"📥 Download Results"** tab.
+Ensure QGIS (a free and open-source Geographic Information System) is inst...
 """
-
 
 # Sidebar for file uploads
 st.sidebar.header("📂 Upload Input Files")
@@ -170,12 +71,8 @@ y_max = col2.number_input("Y Max (Lat)", value=6.46934, format="%.5f")
 tolerance = st.sidebar.number_input("Tolerance", value=0.005, format="%.3f")
 ncore = st.sidebar.number_input("Number of Cores", value=8, min_value=1, max_value=16)
 
-# Main content area - Added 'Instructions' tab as the first element
-tab0, tab1, tab2, tab3, tab4 = st.tabs(["📖 Instructions", "📊 Data Preview", "⚙️ Calculate Emissions", "🗺️ Emission Map", "📥 Download Results"])
-
-with tab0:
-    st.header("Emission Calculation Workflow Instructions")
-    st.markdown(INSTRUCTION_CONTENT, unsafe_allow_html=True) # Display the detailed instructions
+# Main content area
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Data Preview", "⚙️ Calculate Emissions", "🗺️ Emission Map", "📥 Download Results"])
 
 with tab1:
     st.header("Data Preview")
@@ -184,6 +81,7 @@ with tab1:
         st.subheader("Link OSM Data")
         try:
             # Read space-separated .dat file
+            link_osm.seek(0)
             data_link = pd.read_csv(link_osm, sep=r'\s+', header=None, engine='python')
 
             # Set column names
@@ -232,7 +130,6 @@ with tab2:
                     # Check if copert module is available
                     try:
                         import copert
-
                         copert_available = True
                     except ImportError:
                         copert_available = False
@@ -312,7 +209,7 @@ with tab2:
                                 # Update progress
                                 if i % max(1, Nlink // 100) == 0:
                                     progress_bar.progress(i / Nlink)
-                                    status_text.text(f"Processing link {i + 1}/{Nlink}")
+                                status_text.text(f"Processing link {i + 1}/{Nlink}")
 
                                 # Extract link data (columns: OSM_ID, Length, Flow, Speed, Gas_Prop, PC_Prop, 4Stroke_Prop)
                                 link_length = data_link[i, 1]
@@ -336,7 +233,7 @@ with tab2:
                                     for c in range(Nclass):
                                         for k in range(2):
                                             if (copert_class[c] != cop.class_Improved_Conventional
-                                                and copert_class[c] != cop.class_Open_loop) \
+                                                    and copert_class[c] != cop.class_Open_loop) \
                                                     or engine_capacity[k] <= 2.0:
                                                 if t == 1 and k == 0 \
                                                         and copert_class[c] in range(cop.class_Euro_1,
@@ -346,7 +243,7 @@ with tab2:
                                                                  cop.vehicle_type_passenger_car, engine_type[t],
                                                                  copert_class[c], engine_capacity[k], 28.2)
                                                 e *= engine_type_distribution[t] \
-                                                     * engine_capacity_distribution[t][k]
+                                                      * engine_capacity_distribution[t][k]
                                                 hot_emission_pc[i] += e * p_passenger / link_length * link_flow
 
                                 # Motorcycle emission
@@ -372,31 +269,30 @@ with tab2:
                             st.session_state.hot_emission_m = hot_emission_m
                             st.session_state.data_link = data_link
 
-                            st.success("✅ Emissions calculated successfully!")
+                        st.success("✅ Emissions calculated successfully!")
 
                             # Display results
-                            results_df = pd.DataFrame({
+                        results_df = pd.DataFrame({
                                 'OSM_ID': data_link[:, 0].astype(int),
                                 'Hot_Emission_PC (g/km)': hot_emission_pc,
                                 'Hot_Emission_Motorcycle (g/km)': hot_emission_m,
                                 'Total_Emission (g/km)': hot_emission
-                            })
+                        })
 
-                            st.dataframe(results_df)
+                        st.dataframe(results_df)
 
                             # Statistics
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.metric("Total PC Emissions", f"{hot_emission_pc.sum():.2f} g/km")
-                            with col2:
-                                st.metric("Total Motorcycle Emissions", f"{hot_emission_m.sum():.2f} g/km")
-                            with col3:
-                                st.metric("Total Emissions", f"{hot_emission.sum():.2f} g/km")
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Total PC Emissions", f"{hot_emission_pc.sum():.2f} g/km")
+                        with col2:
+                            st.metric("Total Motorcycle Emissions", f"{hot_emission_m.sum():.2f} g/km")
+                        with col3:
+                            st.metric("Total Emissions", f"{hot_emission.sum():.2f} g/km")
 
                 except Exception as e:
                     st.error(f"Error during calculation: {e}")
                     import traceback
-
                     st.code(traceback.format_exc())
     else:
         st.warning("⚠️ Please upload all required files to proceed")
@@ -435,7 +331,6 @@ with tab3:
                     # Check if osm_network module is available
                     try:
                         import osm_network
-
                         osm_available = True
                     except ImportError:
                         osm_available = False
@@ -466,7 +361,10 @@ with tab3:
                             # Retrieve highway data
                             status_text = st.empty()
                             status_text.text("Parsing OSM network...")
-                            highway_coordinate, highway_osmid = osm_network.retrieve_highway(
+
+                            # MODIFICATION 1: Update to retrieve road names (name) and types (highway_type)
+                            # NOTE: This assumes your custom 'osm_network' module has been updated to return these.
+                            highway_coordinate, highway_osmid, highway_names, highway_types = osm_network.retrieve_highway(
                                 osm_path, selected_zone, tolerance, int(ncore)
                             )
                             status_text.text("OSM network parsed successfully!")
@@ -506,7 +404,8 @@ with tab3:
                             roads_with_data = 0
                             roads_without_data = 0
 
-                            for refs, osmid in zip(highway_coordinate, highway_osmid):
+                            # MODIFICATION 2: Update loop to unpack names and types
+                            for refs, osmid, name, highway_type in zip(highway_coordinate, highway_osmid, highway_names, highway_types):
                                 try:
                                     i = emission_osm_id.index(osmid)
                                 except:
@@ -518,6 +417,23 @@ with tab3:
                                     ax.plot([x[0] for x in refs], [x[1] for x in refs],
                                             color=color_value,
                                             lw=current_emission * width_scaling)
+
+                                    # MODIFICATION 3: NEW CODE FOR LABELING ROAD NAMES
+                                    # Only label named roads of a major type (to prevent map clutter)
+                                    # Common major road types from OSM: motorway, trunk, primary, secondary
+                                    if name and highway_type in ['motorway', 'trunk', 'primary', 'secondary']:
+                                        # Calculate center point for text placement
+                                        center_index = len(refs) // 2
+                                        x_center = refs[center_index][0]
+                                        y_center = refs[center_index][1]
+
+                                        # Add text label with a white background for better visibility
+                                        ax.text(x_center, y_center, str(name),
+                                                fontsize=6, color='black',
+                                                ha='center', va='center',
+                                                bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', boxstyle='round,pad=0.1'))
+                                    # END NEW CODE
+
                                     roads_with_data += 1
                                 else:
                                     ax.plot([x[0] for x in refs], [x[1] for x in refs],
@@ -527,7 +443,7 @@ with tab3:
                             # Finalize plot
                             ax.set_xlim(x_min, x_max)
                             ax.set_ylim(y_min, y_max)
-                            ax.set_title("Emission Factor Map")
+                            ax.set_title("Emission Factor Map with Road Names")
                             ax.set_xlabel("Longitude")
                             ax.set_ylabel("Latitude")
 
@@ -599,7 +515,6 @@ with tab3:
                 except Exception as e:
                     st.error(f"Error generating map: {e}")
                     import traceback
-
                     st.code(traceback.format_exc())
 
 with tab4:
@@ -718,6 +633,17 @@ Map Boundaries:
     else:
         st.info("Calculate emissions first to create ZIP archive")
 
-# Footer - REMOVED OLD INSTRUCTIONS SECTION
+# Footer
 st.sidebar.markdown("---")
+st.sidebar.markdown("**📖 Instructions:**")
+st.sidebar.markdown("""
+1. Upload all COPERT parameter files
+2. Upload link OSM data (7 columns)
+3. Upload proportion data files
+4. Upload OSM network file
+5. Configure map parameters
+6. Calculate emissions
+7. Generate and download results
+""")
+
 st.sidebar.info("Built with Streamlit by SHassan🎈")
