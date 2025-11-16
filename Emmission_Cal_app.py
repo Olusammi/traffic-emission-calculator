@@ -580,9 +580,9 @@ with tab3:
                                                     too_close = True
                                                     break
                                         
-                                        if not too_close:
+                                    if not too_close:
                                         # Calculate angle of road segment for rotation
-                                        angle = 0
+                                            angle = 0
                                         if rotate_labels and len(refs) > 1:
                                             dx = refs[min(center_index + 1, len(refs) - 1)][0] - refs[max(center_index - 1, 0)][0]
                                             dy = refs[min(center_index + 1, len(refs) - 1)][1] - refs[max(center_index - 1, 0)][1]
@@ -830,3 +830,4 @@ st.sidebar.markdown("""
 """)
 
 st.sidebar.info("Built with Streamlit by SHassan 🎈")
+
