@@ -54,7 +54,7 @@ class MockCopert:
         # and then scales it by link flow and distance.
         # Hot Emission = EF_Hot * Distance * Flow
         
-        # A simple, mock EF based on speed and temp (for demonstration only)
+        # A simple, mock EF based on speed and speed and temp (for demonstration only)
         # Actual COPERT uses complex lookups and polynomials.
         base_ef = 0.5 + 0.01 * speed_kmh + 0.05 * (ambient_temp_c - 20)
         
@@ -94,7 +94,10 @@ def load_data(file_uploader):
             elif ';' in content: sep = ';'
             
             file_uploader.seek(0)
+            
+            # Load without header to treat the first row as data if it's a raw .dat file
             df = pd.read_csv(file_uploader, sep=sep, header=None, on_bad_lines='skip')
+            
             # Handle single column files which are often read as a single column with no header
             if df.shape[1] > 0:
                 return df
@@ -126,14 +129,17 @@ def get_pollutant_constant(pollutant_name, cop):
 
 # --- Core Calculation Function ---
 
-# Removed @st.cache_resource decorator to fix UnhashableParamError 
-# caused by passing 'st_container' and for compatibility with Streamlit UI updates.
 def calculate_emissions(data_link, copert_instance, pollutant_str, ambient_temp_c, st_container):
     """Performs the full COPERT emission calculation."""
     
     # Check for core data readiness
     if data_link is None or copert_instance is None:
         st_container.error("Calculation setup incomplete. Check file uploads.")
+        return None, None
+        
+    # CRITICAL: Ensure the expected number of columns are present (min 7)
+    if data_link.shape[1] < 7:
+        st_container.error(f"Link OSM Data must have at least 7 columns, but only {data_link.shape[1]} were found. Please check your file format and delimiter.")
         return None, None
 
     # Determine pollutant constant
@@ -142,28 +148,24 @@ def calculate_emissions(data_link, copert_instance, pollutant_str, ambient_temp_
     st_container.markdown(f"### Running Emission Model for: **{pollutant_str}**")
     st_container.caption(f"Ambient Temperature set to: **{ambient_temp_c}°C**")
 
-    # Access the columns from the loaded link data (based on original code's implied structure)
+    # Access the columns from the loaded link data using .iloc (0-indexed column access)
     try:
         # Assuming the link data (data_link) has the following structure (0-indexed):
         # 0: Link ID
-        # 1: X start
-        # 2: Y start
-        # 3: X end
-        # 4: Y end
-        # 5: Flow or Flow related
-        # 6: Speed (km/h)
-        # 7: Vehicle Proportions (This is complex, but we'll use one column as a placeholder)
+        # 1: X start (Longitude)
+        # 2: Y start (Latitude)
+        # 3: X end (Longitude)
+        # 4: Y end (Latitude)
+        # 5: Flow or Flow related data (unused in mock EF but expected in structure)
+        # 6: Speed (km/h) - CRITICAL INPUT FOR EF
         
         # Link Geometry & Traffic
-        x_s, y_s = data_link.iloc[:, 1], data_link.iloc[:, 2] # Start Coords
-        x_e, y_e = data_link.iloc[:, 3], data_link.iloc[:, 4] # End Coords
+        x_s, y_s = data_link.iloc[:, 1], data_link.iloc[:, 2] # Start Coords (X, Y)
+        x_e, y_e = data_link.iloc[:, 3], data_link.iloc[:, 4] # End Coords (X, Y)
         speeds = data_link.iloc[:, 6] # Speed in km/h
 
-        # Mocking the length calculation (using Haversine or simple distance for real use)
-        # Here we use a mock fixed length for simplicity, or calculated distance.
-        # Assuming the link file contains a 'length' column, or we calculate it.
-        # For simplicity, we assume Link Length is not explicitly in the first 7 columns, 
-        # but is implicit in the coordinates, so we will use a mock vector.
+        # Mocking the length calculation. In a real scenario, this would be calculated
+        # from coordinates or provided as a dedicated column.
         link_lengths_km = np.ones(len(data_link)) * 0.5 # Mock length 0.5 km
 
         Nlink = len(data_link)
@@ -173,28 +175,20 @@ def calculate_emissions(data_link, copert_instance, pollutant_str, ambient_temp_
         progress_bar = st_container.progress(0, text="Initializing calculation...")
         # Define a stepping threshold to avoid excessive Streamlit updates
         step_size = max(1, Nlink // 100) 
-
-        # Mock Proportions (Need 6 proportion arrays based on the original code)
-        # In the original app, these came from separate files (prop_g1, prop_d2, etc.)
-        # Since we load them separately, we need to ensure they are passed to the function, 
-        # but for this simplified run, we will mock them.
         
-        # Mocking the complex proportion/parameter lookup and iteration:
-        # In a real scenario, the following parameters would be dynamically loaded 
-        # from the proportion files and matched to the link ID:
-        
-        # Example mock iteration for Passenger Cars (PC)
+        # Iteration over all links
         for i in range(Nlink):
             v = speeds.iloc[i] # Link speed
             link_length = link_lengths_km[i]
             
             # --- Mocking PC Calculation ---
-            # Assume 1 vehicle type, 1 engine type, 1 copert class, 1 engine capacity category
+            # In a real app, proportions (prop_g1, prop_d2, etc.) would be used here
+            # to determine the weight of each vehicle category (e.g., Euro class, engine size).
             mock_engine_type = "Gasoline" 
             mock_copert_class = "EURO 4"
             mock_engine_capacity = "1400-2000" # cc
 
-            # The Emission function handles the complex COPERT lookups
+            # Calculate Passenger Car EF and total emission
             e_pc = copert_instance.Emission(
                 pollutant_const, v, link_length, copert_instance.vehicle_type_passenger_car, 
                 mock_engine_type, mock_copert_class, mock_engine_capacity, ambient_temp_c
@@ -202,7 +196,6 @@ def calculate_emissions(data_link, copert_instance, pollutant_str, ambient_temp_
             hot_emission[i] += e_pc
 
             # --- Mocking Motorcycle Calculation ---
-            # Assume a single motorcycle class for mock
             mock_engine_type_m = "4-Stroke"
             mock_copert_class_m = "MC>50"
             
@@ -223,8 +216,8 @@ def calculate_emissions(data_link, copert_instance, pollutant_str, ambient_temp_
 
         # Create a DataFrame for visualization (including coordinates)
         results_df = pd.DataFrame({
-            'x_s': x_s, 'y_s': y_s, 
-            'x_e': x_e, 'y_e': y_e,
+            'x_s': x_s.astype(float), 'y_s': y_s.astype(float), 
+            'x_e': x_e.astype(float), 'y_e': y_e.astype(float),
             'hot_emission': hot_emission,
             'hot_emission_m': hot_emission_m
         })
@@ -241,7 +234,7 @@ def calculate_emissions(data_link, copert_instance, pollutant_str, ambient_temp_
             progress_bar.empty()
         except:
             pass
-        st_container.error(f"A critical error occurred during calculation. Check that your link data has at least 7 columns. Error: {e}")
+        st_container.error(f"A critical error occurred during calculation. Please ensure columns [1] to [4] and [6] contain valid numeric data. Error: {e}")
         return None, None
         
 # --- Streamlit App Layout ---
@@ -291,7 +284,7 @@ st.sidebar.markdown("### 🛣️ Traffic & Fleet Data")
 data_files = st.sidebar.expander("Traffic & Proportion Data", expanded=True)
 with data_files:
     # Traffic Link Data
-    link_osm_desc = "Link OSM Data (Expects min. 7 columns: ID, X_s, Y_s, X_e, Y_e, Flow, Speed)"
+    link_osm_desc = "Link OSM Data (Expected Columns: [0] ID, [1] X_s, [2] Y_s, [3] X_e, [4] Y_e, [5] Flow, [6] Speed)"
     link_osm = st.file_uploader(link_osm_desc, type=['dat','csv','txt'], key='link')
     
     # OSM Network File (For map visualization)
@@ -321,10 +314,10 @@ with tab1:
     link_data = load_data(link_osm)
     
     if link_data is not None:
-        st.success(f"Link OSM Data loaded: {len(link_data)} links found.")
-        st.subheader("First 5 Rows of Link Data (Implied Columns)")
+        st.success(f"Link OSM Data loaded: {len(link_data)} links found with {link_data.shape[1]} columns.")
+        st.subheader("First 5 Rows of Link Data (0-Indexed)")
         st.dataframe(link_data.head(5))
-        st.caption("Ensure your columns match: [0] ID, [1] X_s, [2] Y_s, [3] X_e, [4] Y_e, [5] Flow, [6] Speed")
+        st.caption("Ensure your columns match: **[1] X_s, [2] Y_s, [3] X_e, [4] Y_e, [6] Speed**")
     else:
         st.info("Please upload your Link OSM Data in the sidebar to view a preview.")
 
