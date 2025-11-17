@@ -5,3 +5,4 @@ matplotlib>=3.7.0
 Pillow>=9.0.0
 osmium
 plotly>=5.0.0
+statsmodels
