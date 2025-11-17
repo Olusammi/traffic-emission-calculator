@@ -84,25 +84,43 @@ class MockCopert:
 # --- Utility Functions ---
 
 def load_data(file_uploader):
-    """Loads CSV/DAT data from Streamlit uploader."""
+    """Loads CSV/DAT data from Streamlit uploader, supporting space delimiters."""
     if file_uploader:
         try:
-            # Check for common delimiters
+            # Read a chunk to sniff delimiter
             content = file_uploader.read().decode('utf-8')
-            sep = ','
-            if '\t' in content: sep = '\t'
-            elif ';' in content: sep = ';'
-            
             file_uploader.seek(0)
             
-            # Load without header to treat the first row as data if it's a raw .dat file
-            df = pd.read_csv(file_uploader, sep=sep, header=None, on_bad_lines='skip')
-            
+            # Priority 1: Check for common single-character delimiters
+            sep = None
+            if '\t' in content:
+                sep = '\t'
+            elif ';' in content:
+                sep = ';'
+            elif ',' in content:
+                sep = ','
+
+            # Determine read strategy
+            if sep is not None:
+                # Use detected single-character separator
+                df = pd.read_csv(file_uploader, sep=sep, header=None, on_bad_lines='skip', encoding='utf-8')
+            else:
+                # Fallback (and user-requested) to robust whitespace separation (\s+)
+                # This handles files where columns are separated by one or more spaces
+                try:
+                    df = pd.read_csv(file_uploader, sep='\s+', header=None, on_bad_lines='skip', 
+                                     engine='python', skipinitialspace=True, encoding='utf-8')
+                except Exception as e:
+                    st.warning(f"Failed to read file using robust whitespace separator: {e}. Attempting default comma read.")
+                    file_uploader.seek(0)
+                    df = pd.read_csv(file_uploader, header=None, on_bad_lines='skip', encoding='utf-8')
+
+
             # Handle single column files which are often read as a single column with no header
             if df.shape[1] > 0:
                 return df
             else:
-                st.error("Could not parse file content. Please check delimiter.")
+                st.error("Could not parse file content. Please check delimiter or ensure file is not empty.")
                 return None
         except Exception as e:
             st.error(f"Error reading file {file_uploader.name}: {e}")
