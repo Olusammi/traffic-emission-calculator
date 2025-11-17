@@ -293,12 +293,14 @@ with data_files:
     prop_files = st.expander("Vehicle Fleet Proportion Files (1-column array)", expanded=False)
     with prop_files:
         st.caption("These files define the distribution of the fleet (e.g., Euro Class, Fuel Type).")
-        prop_g1 = st.file_uploader("Engine Capacity Gasoline (e.g., <1.4L)", type=['csv','txt'], key='g1')
-        prop_d2 = st.file_uploader("COPERT Class Diesel (e.g., EURO 4)", type=['csv','txt'], key='d2')
-        prop_h1 = st.file_uploader("HDV Class Distribution", type=['csv','txt'], key='h1')
-        prop_h2 = st.file_uploader("HDV Load Distribution", type=['csv','txt'], key='h2')
-        prop_m1 = st.file_uploader("Motorcycle 2-Stroke Proportion", type=['csv','txt'], key='m1')
-        prop_m2 = st.file_uploader("Motorcycle 4-Stroke Proportion", type=['csv','txt'], key='m2')
+        # --- Adjusted to include '.dat' ---
+        prop_g1 = st.file_uploader("Engine Capacity Gasoline (e.g., <1.4L)", type=['dat','csv','txt'], key='g1')
+        prop_d2 = st.file_uploader("COPERT Class Diesel (e.g., EURO 4)", type=['dat','csv','txt'], key='d2')
+        prop_h1 = st.file_uploader("HDV Class Distribution", type=['dat','csv','txt'], key='h1')
+        prop_h2 = st.file_uploader("HDV Load Distribution", type=['dat','csv','txt'], key='h2')
+        prop_m1 = st.file_uploader("Motorcycle 2-Stroke Proportion", type=['dat','csv','txt'], key='m1')
+        prop_m2 = st.file_uploader("Motorcycle 4-Stroke Proportion", type=['dat','csv','txt'], key='m2')
+        # -----------------------------------
 
 # --- Main Tabs ---
 
