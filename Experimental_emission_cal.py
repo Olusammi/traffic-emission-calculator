@@ -577,6 +577,12 @@ Map Boundaries:
     else:
         st.info("Calculate emissions first to create ZIP archive")
 
+pollutant = st.sidebar.selectbox(
+       "Select Pollutant",
+       ["CO", "CO2", "NOx", "PM2.5"],
+       help="Choose which pollutant to calculate"
+   )
+
 # Footer
 st.sidebar.markdown("---")
 st.sidebar.markdown("**📖 Instructions:**")
@@ -592,6 +598,7 @@ st.sidebar.markdown("""
 9. Download results
 """)
 st.sidebar.info("Built with Streamlit by SHassan 🎈")
+
 
 
 
