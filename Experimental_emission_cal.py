@@ -126,7 +126,8 @@ def get_pollutant_constant(pollutant_name, cop):
 
 # --- Core Calculation Function ---
 
-@st.cache_resource
+# Removed @st.cache_resource decorator to fix UnhashableParamError 
+# caused by passing 'st_container' and for compatibility with Streamlit UI updates.
 def calculate_emissions(data_link, copert_instance, pollutant_str, ambient_temp_c, st_container):
     """Performs the full COPERT emission calculation."""
     
@@ -170,6 +171,8 @@ def calculate_emissions(data_link, copert_instance, pollutant_str, ambient_temp_
         hot_emission_m = np.zeros(Nlink) # Motorcycle emissions
 
         progress_bar = st_container.progress(0, text="Initializing calculation...")
+        # Define a stepping threshold to avoid excessive Streamlit updates
+        step_size = max(1, Nlink // 100) 
 
         # Mock Proportions (Need 6 proportion arrays based on the original code)
         # In the original app, these came from separate files (prop_g1, prop_d2, etc.)
@@ -211,12 +214,12 @@ def calculate_emissions(data_link, copert_instance, pollutant_str, ambient_temp_
             hot_emission_m[i] += e_moto
             hot_emission[i] += e_moto
             
-            # Update progress bar
-            if i % max(1, Nlink // 50) == 0:
+            # Update progress bar only when stepping past the threshold
+            if i % step_size == 0 or i == Nlink - 1:
                 progress_bar.progress((i + 1) / Nlink, text=f"Processing link {i+1} of {Nlink}...")
 
-        progress_bar.progress(1.0, text="Calculation complete!")
-        st_container.success("Calculation successful!")
+        progress_bar.empty() # Clear the progress bar after completion
+        st_container.success("Calculation complete! Results are ready.")
 
         # Create a DataFrame for visualization (including coordinates)
         results_df = pd.DataFrame({
@@ -233,6 +236,11 @@ def calculate_emissions(data_link, copert_instance, pollutant_str, ambient_temp_
         return results_df, (x_min, x_max, y_min, y_max)
 
     except Exception as e:
+        # Clear progress bar on error
+        try:
+            progress_bar.empty()
+        except:
+            pass
         st_container.error(f"A critical error occurred during calculation. Check that your link data has at least 7 columns. Error: {e}")
         return None, None
         
@@ -351,6 +359,8 @@ with tab2:
 with tab3:
     st.header("Start Emission Calculation")
     calc_container = st.container()
+
+    link_data = load_data(link_osm) # Reload link_data here for the button click context
 
     if link_data is None:
         calc_container.error("Link OSM Data is required to run the calculation.")
