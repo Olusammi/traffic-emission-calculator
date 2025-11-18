@@ -946,7 +946,7 @@ with tab4:
                             with col5:
                                 st.metric(f"Total {poll}",
                                           f"{emissions_data[poll]['total'].sum():.2f} {pollutants_available[poll]['unit']}")
-                    except Exception as e:
+                except Exception as e:
                     st.error(f"❌ Error during calculation: {e}")
                     import traceback
                     with st.expander("🐛 Debug Information"):
@@ -1724,3 +1724,4 @@ st.markdown("""
     <p>© 2024 - Developed by SHassan 🎈</p>
 </div>
 """, unsafe_allow_html=True)
+
