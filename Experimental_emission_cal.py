@@ -140,7 +140,7 @@ with proportion_files:
 st.sidebar.markdown("---")
 st.sidebar.info("""
 **LDV/HDV Distributions:**
-Default fleet compositions (PC Gasoline for LDV, 100% Euro VI for HDV) will be used if specific distribution files are not provided, allowing calculations to proceed.
+Default fleet compositions (PC Gasoline for LDV, 100% Euro IV/VI for HDV) will be used if specific distribution files are not provided, allowing calculations to proceed.
 """)
 
 
@@ -634,14 +634,18 @@ with tab4:
                         data_copert_class_ldv = data_copert_class_gasoline
 
                         # 2. Default HDV Distribution: Assumption of a modern, standard fleet.
-                        N_HDV_Class = 6 # Euro I to VI
+                        # FIX: The user's 'corpert.py' is missing constants for HDV Euro V and VI.
+                        # We adjust N_HDV_Class and the default assumption to use the highest defined class (Euro IV).
+                        
+                        N_HDV_Class = 4 # Euro I to IV (Only these are assumed to be defined by constants)
                         N_HDV_Type = 15 # Standard COPERT types
-                        st.info("ℹ️ Using a **Default HDV Fleet** composition: **100% Euro VI** (cleanest standard) and **Rigid Truck < 7.5t** (Type 0).")
+                        st.warning("⚠️ **Your `corpert.py` appears to be missing constants for HDV Euro V and VI.** The HDV default is being downgraded to **100% Euro IV** to allow the calculation to proceed.")
+                        st.info("ℹ️ Using a **Default HDV Fleet** composition: **100% Euro IV** (highest supported standard) and **Rigid Truck < 7.5t** (Type 0).")
                         
                         data_hdv_reshaped = np.zeros((Nlink, N_HDV_Class, N_HDV_Type))
                         
-                        # Set 100% of the fleet for each link to Euro VI (index 5) and HDV Type 0 (Rigid Truck < 7.5t, index 0)
-                        data_hdv_reshaped[:, 5, 0] = 1.0 
+                        # Set 100% of the fleet for each link to Euro IV (index 3) and HDV Type 0 (Rigid Truck < 7.5t, index 0)
+                        data_hdv_reshaped[:, 3, 0] = 1.0 
                         
                         # --- End New Defaults ---
 
@@ -664,13 +668,13 @@ with tab4:
                         Mclass = len(copert_class_motorcycle)
 
                         # HDV Emission Classes (for use in calculation loop)
+                        # NOTE: Only include HDV classes up to Euro IV to avoid the 'class_hdv_Euro_V' error.
                         HDV_Emission_Classes = [
                             cop.class_hdv_Euro_I,
                             cop.class_hdv_Euro_II,
                             cop.class_hdv_Euro_III,
-                            cop.class_hdv_Euro_IV,
-                            cop.class_hdv_Euro_V,
-                            cop.class_hdv_Euro_VI
+                            cop.class_hdv_Euro_IV
+                            # Euro V and Euro VI are excluded due to missing constants in 'corpert.py'
                         ]
 
                         # Initialize emission arrays for each selected pollutant
@@ -822,13 +826,13 @@ with tab4:
 
                                 # 3. Heavy Duty Vehicle (HDV) emissions - Uses default distribution
                                 if P_hdv_i > 0:
-                                    # HDV calculation uses the default data_hdv_reshaped (100% Euro VI, Type 0)
-                                    for t_class in range(N_HDV_Class): # HDV Euro classes (I to VI)
+                                    # HDV calculation uses the default data_hdv_reshaped (100% Euro IV, Type 0)
+                                    for t_class in range(N_HDV_Class): # HDV Euro classes (I to IV)
                                         for t_type in range(N_HDV_Type): # HDV Types (Weight/Configuration)
                                             
                                             hdv_fleet_share = data_hdv_reshaped[i, t_class, t_type] 
                                             
-                                            # Only calculate if there is a share (which will only be for Euro VI, Type 0)
+                                            # Only calculate if there is a share (which will only be for Euro IV, Type 0)
                                             if hdv_fleet_share > 0: 
                                                 engine_type_hdv = cop.engine_type_diesel # HDV are generally diesel
                                                 
@@ -1163,81 +1167,72 @@ with tab7:
         # ZIP file containing all calculated data and reports
         st.subheader("Complete Analysis Package (ZIP)")
         if st.button("Generate & Download ZIP Report", use_container_width=True):
-            with BytesIO() as buffer:
-                with zipfile.ZipFile(buffer, 'w') as zipf:
-                    # 1. Full Results CSV
-                    zipf.writestr('full_link_results.csv', final_results_df.to_csv(index=False))
+            with st.spinner("Generating ZIP report..."):
+                with BytesIO() as buffer:
+                    with zipfile.ZipFile(buffer, 'w') as zipf:
+                        # 1. Full Results CSV
+                        zipf.writestr('full_link_results.csv', final_results_df.to_csv(index=False))
 
-                    # 2. Statistics Summary CSV
-                    summary_data = []
-                    for poll in selected_pollutants:
-                        summary_data.append({
-                            'Pollutant': poll,
-                            'Total PC': emissions_data[poll]['pc'].sum(),
-                            'Total LDV': emissions_data[poll]['ldv'].sum(),
-                            'Total HDV': emissions_data[poll]['hdv'].sum(),
-                            'Total Moto': emissions_data[poll]['moto'].sum(),
-                            'Grand Total': emissions_data[poll]['total'].sum(),
-                            'Unit': pollutants_available[poll]['unit']
-                        })
-                    summary_df = pd.DataFrame(summary_data)
-                    zipf.writestr('statistics_summary.csv', summary_df.to_csv(index=False))
+                        # 2. Statistics Summary CSV
+                        summary_data = []
+                        for poll in selected_pollutants:
+                            summary_data.append({
+                                'Pollutant': poll,
+                                'Total PC': emissions_data[poll]['pc'].sum(),
+                                'Total LDV': emissions_data[poll]['ldv'].sum(),
+                                'Total HDV': emissions_data[poll]['hdv'].sum(),
+                                'Total Moto': emissions_data[poll]['moto'].sum(),
+                                'Grand Total': emissions_data[poll]['total'].sum(),
+                                'Unit': pollutants_available[poll]['unit']
+                            })
+                        summary_df = pd.DataFrame(summary_data)
+                        zipf.writestr('statistics_summary.csv', summary_df.to_csv(index=False))
 
-                    # 3. Text Report
-                    report_text = f"""
-                    Traffic Emission Calculation Report
-                    Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
-                    
-                    Selected Pollutants: {', '.join(selected_pollutants)}
-                    Methodology: {calculation_method}
-                    Ambient Temperature: {ambient_temp}°C
-                    Trip Length (Cold Start): {trip_length} km
-                    
-                    --- Summary Statistics ---
-                    {summary_df.to_string(index=False)}
-                    
-                    --- Note on LDV/HDV Distribution ---
-                    This calculation used a simplified fleet distribution for Light Duty Vehicles (LDV) and Heavy Duty Vehicles (HDV) as no specific files were uploaded.
-                    LDV Fleet Composition: Defaulted to the uploaded Passenger Car (Gasoline) Euro Class Distribution.
-                    HDV Fleet Composition: Defaulted to 100% Euro VI standard and Rigid Truck < 7.5t type.
-                    
-                    --- Link Data Column Count ---
-                    Link Data File Columns: {data_link_np.shape[1]}
-                    If 7 columns, LDV/HDV flow proportions were assumed zero.
-                    If 9 columns, LDV/HDV flow proportions were read from columns 8 and 9.
-                    
-                    --- Data Preview (First 5 Rows of Full Results) ---
-                    {final_results_df.head().to_string()}
-                    """
-                    zipf.writestr('detailed_report.txt', report_text)
-                    
+                        # 3. Text Report
+                        report_text = f"""
+                        Traffic Emission Calculation Report
+                        Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
+                        
+                        Selected Pollutants: {', '.join(selected_pollutants)}
+                        Methodology: {calculation_method}
+                        Ambient Temperature: {ambient_temp}°C
+                        Trip Length (Cold Start): {trip_length} km
+                        
+                        --- Summary Statistics ---
+                        {summary_df.to_string(index=False)}
+                        
+                        --- Note on LDV/HDV Distribution ---
+                        This calculation used a simplified fleet distribution for Light Duty Vehicles (LDV) and Heavy Duty Vehicles (HDV) as no specific files were uploaded.
+                        LDV Fleet Composition: Defaulted to the uploaded Passenger Car (Gasoline) Euro Class Distribution.
+                        HDV Fleet Composition: Defaulted to 100% Euro IV standard (due to missing Euro V/VI constants in 'corpert.py') and Rigid Truck < 7.5t type.
+                        
+                        --- Link Data Column Count ---
+                        Link Data File Columns: {data_link_np.shape[1]}
+                        If 7 columns, LDV/HDV flow proportions were assumed zero.
+                        If 9 columns, LDV/HDV flow proportions were read from columns 8 and 9.
+                        
+                        --- Data Preview (First 5 Rows of Full Results) ---
+                        {final_results_df.head().to_string()}
+                        """
+                        zipf.writestr('detailed_report.txt', report_text)
+                        
                     st.success("ZIP report generated!")
 
-                buffer.seek(0)
-                st.download_button(
-                    label="Download ZIP Report",
-                    data=buffer,
-                    file_name="traffic_emission_analysis.zip",
-                    mime="application/zip",
-                    key='download_zip',
-                    use_container_width=True
-                )
-        
-        st.markdown("---")
-        st.markdown("### 📚 Export Formats")
-        st.info("""
-        **Available Export Formats:**
-        - **CSV**: Comma-separated values for spreadsheet applications
-        - **ZIP**: Complete analysis package with all data and documentation
-        
-        **Vehicle Type Breakdown:**
-        All exports now include separate columns for:
-        - PC: Passenger Cars
-        - LDV: Light Duty Vehicles
-        - HDV: Heavy Duty Vehicles
-        - Moto: Motorcycles
-        - Total: Sum of all vehicle types
-        """)
+                    buffer.seek(0)
+                    st.download_button(
+                        label="Download ZIP Report",
+                        data=buffer,
+                        file_name="traffic_emission_analysis.zip",
+                        mime="application/zip",
+                        key='download_zip',
+                        use_container_width=True
+                    )
+            
+            except Exception as e:
+                st.error(f"❌ Error creating ZIP: {e}")
+                import traceback
+                with st.expander("🐛 Debug Information"):
+                    st.code(traceback.format_exc())
     else:
         st.info("Calculate emissions first to create download package")
 
@@ -1249,12 +1244,6 @@ st.markdown("""
     <p>Built with COPERT IV, IPCC, and EPA MOVES methodologies</p>
     <p>Now with support for PC, LDV, HDV, and Motorcycle emissions</p>
     <p>Standards: EEA Guidebook 2019, IPCC 2019 Guidelines, WHO Air Quality Standards</p>
-    <p>© 2025 - Developed with Gemini</p>
+    <p>© 2024 - Developed with Gemini</p>
 </div>
 """, unsafe_allow_html=True)
-
-# Helper Class Definition (Assumed to be in copert.py, included here for context)
-# Since you uploaded 'corpert.py' separately, this is a placeholder reminder. 
-# The application assumes a valid 'copert' module is available in the environment.
-# *** The Copert class is NOT included in this file generation. ***
-# *** It is assumed that 'import copert' works. ***
