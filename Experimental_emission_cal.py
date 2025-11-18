@@ -1227,7 +1227,21 @@ with tab7:
                         key='download_zip',
                         use_container_width=True
                     )
-            
+        st.markdown("---")
+        st.markdown("### 📚 Export Formats")
+        st.info("""
+        **Available Export Formats:**
+        - **CSV**: Comma-separated values for spreadsheet applications
+        - **ZIP**: Complete analysis package with all data and documentation
+        
+        **Vehicle Type Breakdown:**
+        All exports now include separate columns for:
+        - PC: Passenger Cars
+        - LDV: Light Duty Vehicles
+        - HDV: Heavy Duty Vehicles
+        - Moto: Motorcycles
+        - Total: Sum of all vehicle types
+        """)   
             except Exception as e:
                 st.error(f"❌ Error creating ZIP: {e}")
                 import traceback
@@ -1247,3 +1261,4 @@ st.markdown("""
     <p>© 2024 - Developed with Gemini</p>
 </div>
 """, unsafe_allow_html=True)
+
