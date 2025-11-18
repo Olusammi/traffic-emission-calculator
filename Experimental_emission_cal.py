@@ -147,19 +147,22 @@ ncore = st.sidebar.number_input("Number of Cores", value=8, min_value=1, max_val
 st.markdown(
     """
     <style>
-    /* Target the container that holds the st.tabs elements */
-    /* This selector might be subject to change with future Streamlit updates */
-    .stTabs [data-baseweb="tab-list"] {
+    /* Target the main container that holds the tabs widget */
+    div.stTabs {
+        position: -webkit-sticky; /* For Safari compatibility */
         position: sticky;
-        top: 0px; /* Adjust this value if you have a header above the tabs */
-        background-color: white; /* Match your app background color */
-        z-index: 1000; /* Ensure the tabs are on top of other content */
+        top: 0px; 
+        background-color: #FFFFFF; /* IMPORTANT: Use your app's background color! */
+        z-index: 1000;
+        /* Add some padding to prevent content from sneaking up */
+        padding-top: 10px; 
+        padding-bottom: 10px;
+        margin-top: -10px; /* Adjust for default spacing */
     }
 
-    /* Optional: Hide the default scrollbar on the main app content */
-    /* This might not be needed, but is sometimes used with sticky headers */
-    .block-container {
-        padding-top: 2rem;
+    /* Ensure the tab list itself is styled correctly */
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: transparent !important;
     }
     </style>
     """,
@@ -1501,6 +1504,7 @@ st.markdown("""
     <p>© 2024 - Developed by SHassan 🎈</p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
