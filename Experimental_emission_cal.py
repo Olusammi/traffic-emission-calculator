@@ -946,12 +946,11 @@ with tab4:
                             with col5:
                                 st.metric(f"Total {poll}",
                                           f"{emissions_data[poll]['total'].sum():.2f} {pollutants_available[poll]['unit']}")
-        except Exception as e:
-        st.error(f"❌ Error during calculation: {e}")
-        import traceback
-
-        with st.expander("🐛 Debug Information"):
-            st.code(traceback.format_exc())
+                    except Exception as e:
+                    st.error(f"❌ Error during calculation: {e}")
+                    import traceback
+                    with st.expander("🐛 Debug Information"):
+                        st.code(traceback.format_exc())
     else:
         st.warning("⚠️ Please upload all required files")
         missing = []
@@ -962,784 +961,766 @@ with tab4:
             if fdata is None:
                 missing.append(fname)
         st.error(f"**Missing files:** {', '.join(missing)}")
-        st.info(
-            "📁 [Download sample files](https://drive.google.com/drive/folders/1KCu8y-mZ0XtBc6icFlvPnJMxLFM7YCKY?usp=sharing)")
+        st.info("📁 [Download sample files](https://drive.google.com/drive/folders/1KCu8y-mZ0XtBc6icFlvPnJMxLFM7YCKY?usp=sharing)")
 
-    # ==================== TAB 5: MULTI-METRIC ANALYSIS ====================
-    with tab5:
-        st.header("📈 Multi-Metric Analysis & Comparison")
+# ==================== TAB 5: MULTI-METRIC ANALYSIS ====================
+with tab5:
+    st.header("📈 Multi-Metric Analysis & Comparison")
 
-        if 'emissions_data' in st.session_state and st.session_state.emissions_data:
-            emissions_data = st.session_state.emissions_data
-            data_link = st.session_state.data_link
+    if 'emissions_data' in st.session_state and st.session_state.emissions_data:
+        emissions_data = st.session_state.emissions_data
+        data_link = st.session_state.data_link
 
-            # Comparative bar chart
-            st.subheader("📊 Pollutant Comparison")
+        # Comparative bar chart
+        st.subheader("📊 Pollutant Comparison")
 
-            # NEW: Include LDV and HDV in comparison
-            comparison_data = []
-            for poll in st.session_state.selected_pollutants:
-                comparison_data.append({
-                    'Pollutant': poll,
-                    'Passenger Cars': emissions_data[poll]['pc'].sum(),
-                    'LDV': emissions_data[poll]['ldv'].sum(),
-                    'HDV': emissions_data[poll]['hdv'].sum(),
-                    'Motorcycles': emissions_data[poll]['moto'].sum()
-                })
-
-            comp_df = pd.DataFrame(comparison_data)
-
-            fig_comparison = go.Figure()
-            fig_comparison.add_trace(go.Bar(
-                name='Passenger Cars',
-                x=comp_df['Pollutant'],
-                y=comp_df['Passenger Cars'],
-                marker_color='#667eea'
-            ))
-            fig_comparison.add_trace(go.Bar(
-                name='LDV',
-                x=comp_df['Pollutant'],
-                y=comp_df['LDV'],
-                marker_color='#10b981'
-            ))
-            fig_comparison.add_trace(go.Bar(
-                name='HDV',
-                x=comp_df['Pollutant'],
-                y=comp_df['HDV'],
-                marker_color='#f59e0b'
-            ))
-            fig_comparison.add_trace(go.Bar(
-                name='Motorcycles',
-                x=comp_df['Pollutant'],
-                y=comp_df['Motorcycles'],
-                marker_color='#764ba2'
-            ))
-
-            fig_comparison.update_layout(
-                title='Total Emissions by Pollutant and Vehicle Type',
-                xaxis_title='Pollutant',
-                yaxis_title='Total Emissions',
-                barmode='group',
-                height=400
-            )
-            st.plotly_chart(fig_comparison, use_container_width=True)
-
-            # Distribution analysis
-            st.subheader("📉 Emission Distribution Analysis")
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                # Box plot for selected pollutant
-                analysis_poll = st.selectbox("Select pollutant for distribution analysis",
-                                             st.session_state.selected_pollutants)
-
-                fig_box = go.Figure()
-                fig_box.add_trace(go.Box(
-                    y=emissions_data[analysis_poll]['total'],
-                    name=analysis_poll,
-                    marker_color=pollutants_available[analysis_poll]['color']
-                ))
-                fig_box.update_layout(
-                    title=f'{analysis_poll} Distribution Across Links',
-                    yaxis_title=f'{analysis_poll} ({pollutants_available[analysis_poll]["unit"]})',
-                    height=400
-                )
-                st.plotly_chart(fig_box, use_container_width=True)
-
-            with col2:
-                # Histogram
-                fig_hist = px.histogram(
-                    x=emissions_data[analysis_poll]['total'],
-                    nbins=50,
-                    title=f'{analysis_poll} Frequency Distribution',
-                    labels={'x': f'{analysis_poll} ({pollutants_available[analysis_poll]["unit"]})', 'y': 'Frequency'}
-                )
-                fig_hist.update_traces(marker_color=pollutants_available[analysis_poll]['color'])
-                st.plotly_chart(fig_hist, use_container_width=True)
-
-            # Correlation analysis
-            if len(st.session_state.selected_pollutants) > 1:
-                st.subheader("🔗 Pollutant Correlation Matrix")
-
-                corr_data = {}
-                for poll in st.session_state.selected_pollutants:
-                    corr_data[poll] = emissions_data[poll]['total']
-
-                corr_df = pd.DataFrame(corr_data)
-                correlation_matrix = corr_df.corr()
-
-                fig_corr = px.imshow(
-                    correlation_matrix,
-                    text_auto='.2f',
-                    color_continuous_scale='RdYlGn',
-                    title='Correlation Between Pollutants',
-                    aspect='auto'
-                )
-                st.plotly_chart(fig_corr, use_container_width=True)
-
-                st.info("💡 **Interpretation**: Values close to 1 indicate strong positive correlation, " +
-                        "values close to -1 indicate negative correlation, values near 0 indicate no correlation.")
-
-            # Top emitters analysis
-            st.subheader("🔍 Top Emission Hotspots")
-
-            top_n = st.slider("Number of top emitters to display", 5, 50, 10)
-
-            for poll in st.session_state.selected_pollutants:
-                with st.expander(f"Top {top_n} Links for {poll}"):
-                    top_indices = np.argsort(emissions_data[poll]['total'])[-top_n:][::-1]
-
-                    top_data = pd.DataFrame({
-                        'Rank': range(1, top_n + 1),
-                        'OSM_ID': data_link[top_indices, 0].astype(int),
-                        'Length_km': data_link[top_indices, 1],
-                        'Speed_kmh': data_link[top_indices, 3],
-                        'Flow': data_link[top_indices, 2],
-                        f'{poll}_Emission': emissions_data[poll]['total'][top_indices]
-                    })
-
-                    st.dataframe(top_data, use_container_width=True)
-
-                    # Visualization
-                    fig_top = px.bar(
-                        top_data,
-                        x='OSM_ID',
-                        y=f'{poll}_Emission',
-                        title=f'Top {top_n} Emitting Links for {poll}',
-                        color=f'{poll}_Emission',
-                        color_continuous_scale='Reds'
-                    )
-                    st.plotly_chart(fig_top, use_container_width=True)
-
-            # Speed vs Emission analysis
-            st.subheader("🚗 Speed vs Emission Analysis")
-
-            speed_poll = st.selectbox("Select pollutant for speed analysis",
-                                      st.session_state.selected_pollutants,
-                                      key='speed_analysis')
-
-            speed_emission_df = pd.DataFrame({
-                'Speed': data_link[:, 3],
-                'Emission': emissions_data[speed_poll]['total']
+        # NEW: Include LDV and HDV in comparison
+        comparison_data = []
+        for poll in st.session_state.selected_pollutants:
+            comparison_data.append({
+                'Pollutant': poll,
+                'Passenger Cars': emissions_data[poll]['pc'].sum(),
+                'LDV': emissions_data[poll]['ldv'].sum(),
+                'HDV': emissions_data[poll]['hdv'].sum(),
+                'Motorcycles': emissions_data[poll]['moto'].sum()
             })
 
-            fig_speed = px.scatter(
-                speed_emission_df,
-                x='Speed',
-                y='Emission',
-                title=f'{speed_poll} Emissions vs Vehicle Speed',
-                labels={'Speed': 'Speed (km/h)',
-                        'Emission': f'{speed_poll} ({pollutants_available[speed_poll]["unit"]})'},
-                trendline='lowess',
-                color='Emission',
-                color_continuous_scale='Viridis'
-            )
-            st.plotly_chart(fig_speed, use_container_width=True)
+        comp_df = pd.DataFrame(comparison_data)
 
-            st.info("💡 **Optimal Speed Zone**: Most pollutants show minimum emissions in the 50-80 km/h range")
+        fig_comparison = go.Figure()
+        fig_comparison.add_trace(go.Bar(
+            name='Passenger Cars',
+            x=comp_df['Pollutant'],
+            y=comp_df['Passenger Cars'],
+            marker_color='#667eea'
+        ))
+        fig_comparison.add_trace(go.Bar(
+            name='LDV',
+            x=comp_df['Pollutant'],
+            y=comp_df['LDV'],
+            marker_color='#10b981'
+        ))
+        fig_comparison.add_trace(go.Bar(
+            name='HDV',
+            x=comp_df['Pollutant'],
+            y=comp_df['HDV'],
+            marker_color='#f59e0b'
+        ))
+        fig_comparison.add_trace(go.Bar(
+            name='Motorcycles',
+            x=comp_df['Pollutant'],
+            y=comp_df['Motorcycles'],
+            marker_color='#764ba2'
+        ))
 
-        else:
-            st.info("👆 Please calculate emissions first in the 'Calculate Emissions' tab")
+        fig_comparison.update_layout(
+            title='Total Emissions by Pollutant and Vehicle Type',
+            xaxis_title='Pollutant',
+            yaxis_title='Total Emissions',
+            barmode='group',
+            height=400
+        )
+        st.plotly_chart(fig_comparison, use_container_width=True)
 
-    # ==================== TAB 6: INTERACTIVE MAP ====================
-    with tab6:
-        st.header("🗺️ Interactive Emission Map Visualization")
-
-        has_emissions = 'emissions_data' in st.session_state and st.session_state.emissions_data
-
-        if not has_emissions:
-            st.warning("⚠️ Please calculate emissions first")
-        elif osm_file is None:
-            st.warning("⚠️ Please upload OSM network file")
-        else:
-            st.info("🎨 Configure your visualization and generate the emission map")
-
-            # Map pollutant selector
-            map_pollutant = st.selectbox(
-                "Select Pollutant to Visualize on Map",
-                st.session_state.selected_pollutants,
-                help="Choose which pollutant to display on the map"
-            )
-
-            st.markdown("---")
-            st.subheader("🎨 Visualization Settings")
-
-            viz_mode = st.radio(
-                "Select visualization style:",
-                ["Classic (Original)", "Enhanced with Labels", "Custom"],
-                horizontal=True,
-                help="Classic: Original | Enhanced: Smart labels | Custom: Full control"
-            )
-
-            st.markdown("---")
-
-            # Visualization settings based on mode
-            if viz_mode == "Classic (Original)":
-                st.markdown("**Classic Mode Settings**")
-                col1, col2 = st.columns(2)
-                with col1:
-                    colormap = st.selectbox("Color Map", ['jet', 'viridis', 'plasma', 'RdYlGn_r', 'hot'], index=0)
-                    fig_size = st.slider("Figure Size", 8, 16, 10)
-                with col2:
-                    show_roads_without_data = st.checkbox("Show roads without emission data", value=False)
-                    add_grid = st.checkbox("Add grid lines", value=False)
-                line_width_multiplier = 1.0
-                show_labels = False
-                label_density = "Minimal (Major roads only)"
-                rotate_labels = False
-                enhanced_styling = False
-                road_transparency = 1.0
-                grid_alpha = 0.3
-                label_font_size = 7
-                min_label_distance = 0.002
-
-            elif viz_mode == "Enhanced with Labels":
-                st.markdown("**Enhanced Mode Settings**")
-                col1, col2 = st.columns(2)
-                with col1:
-                    colormap = st.selectbox("Color Map", ['jet', 'viridis', 'plasma', 'RdYlGn_r', 'hot', 'coolwarm'],
-                                            index=0)
-                    fig_size = st.slider("Figure Size", 8, 16, 12)
-                    line_width_multiplier = st.slider("Line Width Scale", 0.5, 5.0, 2.0, 0.5)
-                with col2:
-                    label_density = st.selectbox("Road Label Density",
-                                                 ["Minimal (Major roads only)",
-                                                  "Medium (Top 25% emissions)",
-                                                  "High (Top 50% emissions)"], index=1)
-                    show_roads_without_data = st.checkbox("Show roads without emission data", value=True)
-                    rotate_labels = st.checkbox("Rotate labels along roads", value=True)
-                show_labels = True
-                enhanced_styling = True
-                add_grid = True
-                road_transparency = 0.8
-                grid_alpha = 0.2
-                label_font_size = 7
-                min_label_distance = 0.002
-
-            else:  # Custom
-                st.markdown("**Custom Mode Settings**")
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.markdown("**Appearance**")
-                    colormap = st.selectbox("Color Map",
-                                            ['jet', 'viridis', 'plasma', 'RdYlGn_r', 'hot', 'coolwarm', 'inferno'],
-                                            index=0)
-                    fig_size = st.slider("Figure Size", 8, 20, 12)
-                    line_width_multiplier = st.slider("Line Width Scale", 0.1, 10.0, 2.0, 0.5)
-                    enhanced_styling = st.checkbox("Enhanced styling", value=True)
-                with col2:
-                    st.markdown("**Road Display**")
-                    show_roads_without_data = st.checkbox("Show roads without emission data", value=True)
-                    road_transparency = st.slider("Road transparency", 0.0, 1.0, 0.8, 0.1)
-                    add_grid = st.checkbox("Add grid lines", value=True)
-                    grid_alpha = st.slider("Grid transparency", 0.0, 1.0, 0.2, 0.1) if add_grid else 0.2
-                with col3:
-                    st.markdown("**Labels**")
-                    show_labels = st.checkbox("Show road labels", value=True)
-                    if show_labels:
-                        label_density = st.selectbox("Label Density",
-                                                     ["Minimal (Major roads only)",
-                                                      "Medium (Top 25% emissions)",
-                                                      "High (Top 50% emissions)",
-                                                      "Maximum (All named roads)"], index=1)
-                        rotate_labels = st.checkbox("Rotate labels along roads", value=True)
-                        label_font_size = st.slider("Label font size", 4, 12, 7)
-                        min_label_distance = st.slider("Min distance between labels", 0.001, 0.01, 0.002, 0.001)
-                    else:
-                        label_density = "Minimal (Major roads only)"
-                        rotate_labels = False
-                        label_font_size = 7
-                        min_label_distance = 0.002
-
-            st.markdown("---")
-
-            # Display current pollutant info
-            st.info(f"🎯 **Visualizing**: {map_pollutant} - {pollutants_available[map_pollutant]['name']} " +
-                    f"({pollutants_available[map_pollutant]['unit']})")
-
-            if st.button("🗺️ Generate Interactive Map", type="primary", use_container_width=True):
-                with st.spinner(f"Generating {map_pollutant} emission map..."):
-                    try:
-                        import osm_network
-
-                        emissions_data = st.session_state.emissions_data
-                        hot_emission = emissions_data[map_pollutant]['total']
-                        data_link = st.session_state.data_link
-
-                        import tempfile, os
-
-                        with tempfile.NamedTemporaryFile(delete=False, suffix='.osm') as tmp:
-                            osm_file.seek(0)
-                            tmp.write(osm_file.read())
-                            osm_path = tmp.name
-
-                        try:
-                            selected_zone = [[x_min, y_max], [x_min, y_min], [x_max, y_min], [x_max, y_max]]
-                            selected_zone.append(selected_zone[0])
-
-                            status_text = st.empty()
-                            status_text.text("Parsing OSM network...")
-                            highway_coordinate, highway_osmid, highway_names, highway_types = osm_network.retrieve_highway(
-                                osm_path, selected_zone, tolerance, int(ncore))
-                            status_text.text(f"OSM network parsed successfully! Found {len(highway_osmid)} roads")
-
-                            max_emission_value = np.max(hot_emission)
-                            epsilon = 1e-9
-
-                            if viz_mode == "Classic (Original)":
-                                lw_max = 0.00004
-                                lw_min = 0.00002
-                                width_scaling = (lw_max - lw_min) / (max_emission_value + epsilon) + lw_min
-                                lw_nodata = 0.003
-                            else:
-                                lw_max = 3.0 * line_width_multiplier
-                                lw_min = 0.5 * line_width_multiplier
-                                width_scaling = (lw_max - lw_min) / (max_emission_value + epsilon)
-                                lw_nodata = 0.3
-
-                            color_scale = colors.Normalize(vmin=0, vmax=max_emission_value + epsilon)
-                            scale_map = cmx.ScalarMappable(norm=color_scale, cmap=colormap)
-
-                            emission_osm_id = [int(x) for x in data_link[:, 0]]
-
-                            fig = plt.figure(figsize=(fig_size, fig_size - 1), dpi=100)
-                            ax = fig.add_axes([0.1, 0.1, 0.75, 0.75])
-                            ax.set_aspect("equal", adjustable="box")
-                            ax_c = fig.add_axes([0.85, 0.21, 0.03, 0.53])
-                            cb = matplotlib.colorbar.ColorbarBase(ax_c, cmap=plt.cm.get_cmap(colormap),
-                                                                  norm=color_scale, orientation="vertical")
-                            cb.set_label(f"{map_pollutant} ({pollutants_available[map_pollutant]['unit']})",
-                                         fontsize=12)
-
-                            if enhanced_styling:
-                                ax.set_facecolor('#f0f0f0')
-
-                            status_text.text(f"Plotting {map_pollutant} emission data on map...")
-                            roads_with_data = 0
-                            roads_without_data = 0
-
-                            for refs, osmid, name, highway_type in zip(highway_coordinate, highway_osmid, highway_names,
-                                                                       highway_types):
-                                try:
-                                    i = emission_osm_id.index(osmid)
-                                except:
-                                    i = None
-
-                                if i is not None:
-                                    current_emission = hot_emission[i]
-                                    color_value = scale_map.to_rgba(current_emission)
-                                    if viz_mode == "Classic (Original)":
-                                        line_width = current_emission * width_scaling
-                                    else:
-                                        line_width = lw_min + (current_emission * width_scaling)
-                                    plot_kwargs = {'color': color_value, 'lw': line_width, 'alpha': road_transparency}
-                                    if enhanced_styling:
-                                        plot_kwargs['solid_capstyle'] = 'round'
-                                    ax.plot([x[0] for x in refs], [x[1] for x in refs], **plot_kwargs)
-                                    roads_with_data += 1
-                                else:
-                                    if show_roads_without_data:
-                                        if viz_mode == "Classic (Original)":
-                                            ax.plot([x[0] for x in refs], [x[1] for x in refs], "k-", lw=lw_nodata)
-                                        else:
-                                            ax.plot([x[0] for x in refs], [x[1] for x in refs], "gray", lw=lw_nodata,
-                                                    alpha=0.3)
-                                        roads_without_data += 1
-
-                            # Add labels
-                            if show_labels and viz_mode != "Classic (Original)":
-                                labeled_roads = {}
-                                major_road_types = ['motorway', 'trunk', 'primary', 'secondary']
-
-                                if label_density == "Minimal (Major roads only)":
-                                    emission_percentile = 90
-                                    major_only = True
-                                elif label_density == "Medium (Top 25% emissions)":
-                                    emission_percentile = 75
-                                    major_only = False
-                                elif label_density == "High (Top 50% emissions)":
-                                    emission_percentile = 50
-                                    major_only = False
-                                else:
-                                    emission_percentile = 0
-                                    major_only = False
-
-                                emission_threshold = np.percentile(hot_emission, emission_percentile)
-
-                                for refs, osmid, name, highway_type in zip(highway_coordinate, highway_osmid,
-                                                                           highway_names, highway_types):
-                                    try:
-                                        i = emission_osm_id.index(osmid)
-                                        current_emission = hot_emission[i]
-                                    except:
-                                        continue
-
-                                    if major_only:
-                                        should_label = name and highway_type in major_road_types
-                                    else:
-                                        should_label = name and (
-                                                    highway_type in major_road_types or current_emission >= emission_threshold)
-
-                                    if should_label:
-                                        center_index = len(refs) // 2
-                                        x_center = refs[center_index][0]
-                                        y_center = refs[center_index][1]
-
-                                        too_close = False
-                                        if name in labeled_roads:
-                                            for prev_x, prev_y in labeled_roads[name]:
-                                                distance = np.sqrt((x_center - prev_x) ** 2 + (y_center - prev_y) ** 2)
-                                                if distance < min_label_distance:
-                                                    too_close = True
-                                                    break
-
-                                        if not too_close:
-                                            angle = 0
-                                            if rotate_labels and len(refs) > 1:
-                                                dx = refs[min(center_index + 1, len(refs) - 1)][0] - \
-                                                     refs[max(center_index - 1, 0)][0]
-                                                dy = refs[min(center_index + 1, len(refs) - 1)][1] - \
-                                                     refs[max(center_index - 1, 0)][1]
-                                                angle = np.degrees(np.arctan2(dy, dx))
-                                                if angle > 90:
-                                                    angle -= 180
-                                                elif angle < -90:
-                                                    angle += 180
-
-                                            ax.text(x_center, y_center, str(name), fontsize=label_font_size,
-                                                    color='black', ha='center', va='center',
-                                                    rotation=angle, rotation_mode='anchor',
-                                                    bbox=dict(facecolor='white', alpha=0.8, edgecolor='lightgray',
-                                                              linewidth=0.5, boxstyle='round,pad=0.3'), zorder=100)
-
-                                            if name not in labeled_roads:
-                                                labeled_roads[name] = []
-                                            labeled_roads[name].append((x_center, y_center))
-
-                            ax.set_xlim(x_min, x_max)
-                            ax.set_ylim(y_min, y_max)
-
-                            if viz_mode == "Classic (Original)":
-                                ax.set_title(f"{map_pollutant} Emission Factor Map", fontsize=14)
-                            else:
-                                ax.set_title(f"{map_pollutant} Emission Factor Map with Road Names", fontsize=14,
-                                             fontweight='bold')
-
-                            ax.set_xlabel("Longitude", fontsize=12)
-                            ax.set_ylabel("Latitude", fontsize=12)
-
-                            if add_grid:
-                                ax.grid(True, alpha=grid_alpha, linestyle='--', linewidth=0.5)
-
-                            st.pyplot(fig)
-                            st.session_state.emission_map_fig = fig
-                            st.session_state.current_map_pollutant = map_pollutant
-
-                            # Statistics
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.metric("Roads with Emission Data", roads_with_data)
-                            with col2:
-                                st.metric("Roads without Data", roads_without_data)
-                            with col3:
-                                if show_labels and viz_mode != "Classic (Original)":
-                                    st.metric("Unique Road Names Labeled", len(labeled_roads))
-                                else:
-                                    st.metric("Max Emission", f"{max_emission_value:.2f}")
-
-                            status_text.empty()
-                            st.success(f"✅ {map_pollutant} map generated successfully!")
-
-                            # Additional map info
-                            st.info(f"""
-                                **Map Information:**
-                                - Pollutant: {map_pollutant} ({pollutants_available[map_pollutant]['name']})
-                                - Standard: {pollutants_available[map_pollutant]['standard']}
-                                - Color scale: {colormap}
-                                - Total roads visualized: {roads_with_data + roads_without_data}
-                                """)
-
-                        finally:
-                            if os.path.exists(osm_path):
-                                os.unlink(osm_path)
-
-                    except Exception as e:
-                        st.error(f"❌ Error generating map: {e}")
-                        import traceback
-
-                        with st.expander("🐛 Debug Information"):
-                            st.code(traceback.format_exc())
-
-    # ==================== TAB 7: DOWNLOAD RESULTS ====================
-    with tab7:
-        st.header("📥 Download Results")
-
-        st.markdown("### 📊 Available Outputs")
+        # Distribution analysis
+        st.subheader("📉 Emission Distribution Analysis")
 
         col1, col2 = st.columns(2)
 
         with col1:
-            st.markdown("**Emission Data**")
-            if 'emissions_data' in st.session_state and st.session_state.emissions_data:
-                emissions_data = st.session_state.emissions_data
-                data_link = st.session_state.data_link
+            # Box plot for selected pollutant
+            analysis_poll = st.selectbox("Select pollutant for distribution analysis",
+                                        st.session_state.selected_pollutants)
 
-                # NEW: Include LDV and HDV in export data
-                export_data = {'OSM_ID': data_link[:, 0].astype(int), 'Length_km': data_link[:, 1]}
-
-                for poll in st.session_state.selected_pollutants:
-                    export_data[f'{poll}_PC'] = emissions_data[poll]['pc']
-                    export_data[f'{poll}_LDV'] = emissions_data[poll]['ldv']
-                    export_data[f'{poll}_HDV'] = emissions_data[poll]['hdv']
-                    export_data[f'{poll}_Moto'] = emissions_data[poll]['moto']
-                    export_data[f'{poll}_Total'] = emissions_data[poll]['total']
-
-                results_df = pd.DataFrame(export_data)
-                csv = results_df.to_csv(index=False)
-
-                st.download_button(
-                    label="⬇️ Download Multi-Pollutant Emission Data CSV",
-                    data=csv,
-                    file_name="multi_pollutant_emissions.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
-
-                # Individual pollutant downloads
-                with st.expander("Download Individual Pollutant Data"):
-                    for poll in st.session_state.selected_pollutants:
-                        # NEW: Include LDV and HDV in individual downloads
-                        poll_df = pd.DataFrame({
-                            'OSM_ID': data_link[:, 0].astype(int),
-                            'Length_km': data_link[:, 1],
-                            f'{poll}_PC': emissions_data[poll]['pc'],
-                            f'{poll}_LDV': emissions_data[poll]['ldv'],
-                            f'{poll}_HDV': emissions_data[poll]['hdv'],
-                            f'{poll}_Moto': emissions_data[poll]['moto'],
-                            f'{poll}_Total': emissions_data[poll]['total']
-                        })
-                        poll_csv = poll_df.to_csv(index=False)
-                        st.download_button(
-                            label=f"⬇️ Download {poll} Data",
-                            data=poll_csv,
-                            file_name=f"{poll}_emissions.csv",
-                            mime="text/csv",
-                            key=f"download_{poll}"
-                        )
-            else:
-                st.info("Calculate emissions first")
+            fig_box = go.Figure()
+            fig_box.add_trace(go.Box(
+                y=emissions_data[analysis_poll]['total'],
+                name=analysis_poll,
+                marker_color=pollutants_available[analysis_poll]['color']
+            ))
+            fig_box.update_layout(
+                title=f'{analysis_poll} Distribution Across Links',
+                yaxis_title=f'{analysis_poll} ({pollutants_available[analysis_poll]["unit"]})',
+                height=400
+            )
+            st.plotly_chart(fig_box, use_container_width=True)
 
         with col2:
-            st.markdown("**Emission Map**")
-            if 'emission_map_fig' in st.session_state:
-                buf = BytesIO()
-                st.session_state.emission_map_fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
-                buf.seek(0)
+            # Histogram
+            fig_hist = px.histogram(
+                x=emissions_data[analysis_poll]['total'],
+                nbins=50,
+                title=f'{analysis_poll} Frequency Distribution',
+                labels={'x': f'{analysis_poll} ({pollutants_available[analysis_poll]["unit"]})', 'y': 'Frequency'}
+            )
+            fig_hist.update_traces(marker_color=pollutants_available[analysis_poll]['color'])
+            st.plotly_chart(fig_hist, use_container_width=True)
 
-                map_pollutant = st.session_state.get('current_map_pollutant', 'emission')
-                st.download_button(
-                    label=f"⬇️ Download {map_pollutant} Map PNG",
-                    data=buf,
-                    file_name=f"{map_pollutant}_emission_map.png",
-                    mime="image/png",
-                    use_container_width=True
+        # Correlation analysis
+        if len(st.session_state.selected_pollutants) > 1:
+            st.subheader("🔗 Pollutant Correlation Matrix")
+
+            corr_data = {}
+            for poll in st.session_state.selected_pollutants:
+                corr_data[poll] = emissions_data[poll]['total']
+
+            corr_df = pd.DataFrame(corr_data)
+            correlation_matrix = corr_df.corr()
+
+            fig_corr = px.imshow(
+                correlation_matrix,
+                text_auto='.2f',
+                color_continuous_scale='RdYlGn',
+                title='Correlation Between Pollutants',
+                aspect='auto'
+            )
+            st.plotly_chart(fig_corr, use_container_width=True)
+
+            st.info("💡 **Interpretation**: Values close to 1 indicate strong positive correlation, " +
+                   "values close to -1 indicate negative correlation, values near 0 indicate no correlation.")
+
+        # Top emitters analysis
+        st.subheader("🔍 Top Emission Hotspots")
+
+        top_n = st.slider("Number of top emitters to display", 5, 50, 10)
+
+        for poll in st.session_state.selected_pollutants:
+            with st.expander(f"Top {top_n} Links for {poll}"):
+                top_indices = np.argsort(emissions_data[poll]['total'])[-top_n:][::-1]
+
+                top_data = pd.DataFrame({
+                    'Rank': range(1, top_n + 1),
+                    'OSM_ID': data_link[top_indices, 0].astype(int),
+                    'Length_km': data_link[top_indices, 1],
+                    'Speed_kmh': data_link[top_indices, 3],
+                    'Flow': data_link[top_indices, 2],
+                    f'{poll}_Emission': emissions_data[poll]['total'][top_indices]
+                })
+
+                st.dataframe(top_data, use_container_width=True)
+
+                # Visualization
+                fig_top = px.bar(
+                    top_data,
+                    x='OSM_ID',
+                    y=f'{poll}_Emission',
+                    title=f'Top {top_n} Emitting Links for {poll}',
+                    color=f'{poll}_Emission',
+                    color_continuous_scale='Reds'
                 )
-            else:
-                st.info("Generate map first")
+                st.plotly_chart(fig_top, use_container_width=True)
+
+        # Speed vs Emission analysis
+        st.subheader("🚗 Speed vs Emission Analysis")
+
+        speed_poll = st.selectbox("Select pollutant for speed analysis",
+                                 st.session_state.selected_pollutants,
+                                 key='speed_analysis')
+
+        speed_emission_df = pd.DataFrame({
+            'Speed': data_link[:, 3],
+            'Emission': emissions_data[speed_poll]['total']
+        })
+
+        fig_speed = px.scatter(
+            speed_emission_df,
+            x='Speed',
+            y='Emission',
+            title=f'{speed_poll} Emissions vs Vehicle Speed',
+            labels={'Speed': 'Speed (km/h)', 'Emission': f'{speed_poll} ({pollutants_available[speed_poll]["unit"]})'},
+            trendline='lowess',
+            color='Emission',
+            color_continuous_scale='Viridis'
+        )
+        st.plotly_chart(fig_speed, use_container_width=True)
+
+        st.info("💡 **Optimal Speed Zone**: Most pollutants show minimum emissions in the 50-80 km/h range")
+
+    else:
+        st.info("👆 Please calculate emissions first in the 'Calculate Emissions' tab")
+
+# ==================== TAB 6: INTERACTIVE MAP ====================
+with tab6:
+    st.header("🗺️ Interactive Emission Map Visualization")
+
+    has_emissions = 'emissions_data' in st.session_state and st.session_state.emissions_data
+
+    if not has_emissions:
+        st.warning("⚠️ Please calculate emissions first")
+    elif osm_file is None:
+        st.warning("⚠️ Please upload OSM network file")
+    else:
+        st.info("🎨 Configure your visualization and generate the emission map")
+
+        # Map pollutant selector
+        map_pollutant = st.selectbox(
+            "Select Pollutant to Visualize on Map",
+            st.session_state.selected_pollutants,
+            help="Choose which pollutant to display on the map"
+        )
 
         st.markdown("---")
-        st.markdown("### 📦 Download Complete Analysis Package")
+        st.subheader("🎨 Visualization Settings")
 
-        if 'emissions_data' in st.session_state and st.session_state.emissions_data:
-            if st.button("📦 Create ZIP Archive with All Results", type="primary", use_container_width=True):
-                with st.spinner("Creating comprehensive ZIP archive..."):
+        viz_mode = st.radio(
+            "Select visualization style:",
+            ["Classic (Original)", "Enhanced with Labels", "Custom"],
+            horizontal=True,
+            help="Classic: Original | Enhanced: Smart labels | Custom: Full control"
+        )
+
+        st.markdown("---")
+
+        # Visualization settings based on mode
+        if viz_mode == "Classic (Original)":
+            st.markdown("**Classic Mode Settings**")
+            col1, col2 = st.columns(2)
+            with col1:
+                colormap = st.selectbox("Color Map", ['jet','viridis','plasma','RdYlGn_r','hot'], index=0)
+                fig_size = st.slider("Figure Size", 8, 16, 10)
+            with col2:
+                show_roads_without_data = st.checkbox("Show roads without emission data", value=False)
+                add_grid = st.checkbox("Add grid lines", value=False)
+            line_width_multiplier = 1.0
+            show_labels = False
+            label_density = "Minimal (Major roads only)"
+            rotate_labels = False
+            enhanced_styling = False
+            road_transparency = 1.0
+            grid_alpha = 0.3
+            label_font_size = 7
+            min_label_distance = 0.002
+
+        elif viz_mode == "Enhanced with Labels":
+            st.markdown("**Enhanced Mode Settings**")
+            col1, col2 = st.columns(2)
+            with col1:
+                colormap = st.selectbox("Color Map", ['jet','viridis','plasma','RdYlGn_r','hot','coolwarm'], index=0)
+                fig_size = st.slider("Figure Size", 8, 16, 12)
+                line_width_multiplier = st.slider("Line Width Scale", 0.5, 5.0, 2.0, 0.5)
+            with col2:
+                label_density = st.selectbox("Road Label Density",
+                                            ["Minimal (Major roads only)",
+                                             "Medium (Top 25% emissions)",
+                                             "High (Top 50% emissions)"], index=1)
+                show_roads_without_data = st.checkbox("Show roads without emission data", value=True)
+                rotate_labels = st.checkbox("Rotate labels along roads", value=True)
+            show_labels = True
+            enhanced_styling = True
+            add_grid = True
+            road_transparency = 0.8
+            grid_alpha = 0.2
+            label_font_size = 7
+            min_label_distance = 0.002
+
+        else:  # Custom
+            st.markdown("**Custom Mode Settings**")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown("**Appearance**")
+                colormap = st.selectbox("Color Map", ['jet','viridis','plasma','RdYlGn_r','hot','coolwarm','inferno'], index=0)
+                fig_size = st.slider("Figure Size", 8, 20, 12)
+                line_width_multiplier = st.slider("Line Width Scale", 0.1, 10.0, 2.0, 0.5)
+                enhanced_styling = st.checkbox("Enhanced styling", value=True)
+            with col2:
+                st.markdown("**Road Display**")
+                show_roads_without_data = st.checkbox("Show roads without emission data", value=True)
+                road_transparency = st.slider("Road transparency", 0.0, 1.0, 0.8, 0.1)
+                add_grid = st.checkbox("Add grid lines", value=True)
+                grid_alpha = st.slider("Grid transparency", 0.0, 1.0, 0.2, 0.1) if add_grid else 0.2
+            with col3:
+                st.markdown("**Labels**")
+                show_labels = st.checkbox("Show road labels", value=True)
+                if show_labels:
+                    label_density = st.selectbox("Label Density",
+                                                ["Minimal (Major roads only)",
+                                                 "Medium (Top 25% emissions)",
+                                                 "High (Top 50% emissions)",
+                                                 "Maximum (All named roads)"], index=1)
+                    rotate_labels = st.checkbox("Rotate labels along roads", value=True)
+                    label_font_size = st.slider("Label font size", 4, 12, 7)
+                    min_label_distance = st.slider("Min distance between labels", 0.001, 0.01, 0.002, 0.001)
+                else:
+                    label_density = "Minimal (Major roads only)"
+                    rotate_labels = False
+                    label_font_size = 7
+                    min_label_distance = 0.002
+
+        st.markdown("---")
+
+        # Display current pollutant info
+        st.info(f"🎯 **Visualizing**: {map_pollutant} - {pollutants_available[map_pollutant]['name']} " +
+               f"({pollutants_available[map_pollutant]['unit']})")
+
+        if st.button("🗺️ Generate Interactive Map", type="primary", use_container_width=True):
+            with st.spinner(f"Generating {map_pollutant} emission map..."):
+                try:
+                    import osm_network
+                    emissions_data = st.session_state.emissions_data
+                    hot_emission = emissions_data[map_pollutant]['total']
+                    data_link = st.session_state.data_link
+
+                    import tempfile, os
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.osm') as tmp:
+                        osm_file.seek(0)
+                        tmp.write(osm_file.read())
+                        osm_path = tmp.name
+
                     try:
-                        zip_buffer = BytesIO()
-                        emissions_data = st.session_state.emissions_data
-                        data_link = st.session_state.data_link
+                        selected_zone = [[x_min, y_max], [x_min, y_min], [x_max, y_min], [x_max, y_max]]
+                        selected_zone.append(selected_zone[0])
 
-                        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                            # NEW: Main emissions data with all vehicle types
-                            export_data = {'OSM_ID': data_link[:, 0].astype(int), 'Length_km': data_link[:, 1]}
-                            for poll in st.session_state.selected_pollutants:
-                                export_data[f'{poll}_PC'] = emissions_data[poll]['pc']
-                                export_data[f'{poll}_LDV'] = emissions_data[poll]['ldv']
-                                export_data[f'{poll}_HDV'] = emissions_data[poll]['hdv']
-                                export_data[f'{poll}_Moto'] = emissions_data[poll]['moto']
-                                export_data[f'{poll}_Total'] = emissions_data[poll]['total']
+                        status_text = st.empty()
+                        status_text.text("Parsing OSM network...")
+                        highway_coordinate, highway_osmid, highway_names, highway_types = osm_network.retrieve_highway(
+                            osm_path, selected_zone, tolerance, int(ncore))
+                        status_text.text(f"OSM network parsed successfully! Found {len(highway_osmid)} roads")
 
-                            results_df = pd.DataFrame(export_data)
-                            zip_file.writestr('all_pollutants_emissions.csv', results_df.to_csv(index=False))
+                        max_emission_value = np.max(hot_emission)
+                        epsilon = 1e-9
 
-                            # NEW: Individual pollutant files with all vehicle types
-                            for poll in st.session_state.selected_pollutants:
-                                poll_df = pd.DataFrame({
-                                    'OSM_ID': data_link[:, 0].astype(int),
-                                    'Length_km': data_link[:, 1],
-                                    f'{poll}_PC': emissions_data[poll]['pc'],
-                                    f'{poll}_LDV': emissions_data[poll]['ldv'],
-                                    f'{poll}_HDV': emissions_data[poll]['hdv'],
-                                    f'{poll}_Moto': emissions_data[poll]['moto'],
-                                    f'{poll}_Total': emissions_data[poll]['total']
-                                })
-                                zip_file.writestr(f'{poll}_emissions.csv', poll_df.to_csv(index=False))
+                        if viz_mode == "Classic (Original)":
+                            lw_max = 0.00004
+                            lw_min = 0.00002
+                            width_scaling = (lw_max - lw_min) / (max_emission_value + epsilon) + lw_min
+                            lw_nodata = 0.003
+                        else:
+                            lw_max = 3.0 * line_width_multiplier
+                            lw_min = 0.5 * line_width_multiplier
+                            width_scaling = (lw_max - lw_min) / (max_emission_value + epsilon)
+                            lw_nodata = 0.3
 
-                                # Map image if available
-                            if 'emission_map_fig' in st.session_state:
-                                map_buf = BytesIO()
-                                st.session_state.emission_map_fig.savefig(map_buf, format='png', dpi=150,
-                                                                          bbox_inches='tight')
-                                map_buf.seek(0)
-                                map_pollutant = st.session_state.get('current_map_pollutant', 'emission')
-                                zip_file.writestr(f'{map_pollutant}_emission_map.png', map_buf.read())
+                        color_scale = colors.Normalize(vmin=0, vmax=max_emission_value + epsilon)
+                        scale_map = cmx.ScalarMappable(norm=color_scale, cmap=colormap)
 
-                                # Comprehensive summary report
-                            summary = f"""Traffic Emission Analysis Report
-                                {'=' * 70}
+                        emission_osm_id = [int(x) for x in data_link[:, 0]]
 
-                                Analysis Configuration:
-                                - Calculation Method: {calculation_method}
-                                - Pollutants Analyzed: {', '.join(st.session_state.selected_pollutants)}
-                                - Temperature Correction: {'Enabled' if include_temperature_correction else 'Disabled'}
-                                - Cold Start Correction: {'Enabled' if include_cold_start else 'Disabled'}
-                                - Slope Correction: {'Enabled' if include_slope_correction else 'Disabled'}
+                        fig = plt.figure(figsize=(fig_size, fig_size - 1), dpi=100)
+                        ax = fig.add_axes([0.1, 0.1, 0.75, 0.75])
+                        ax.set_aspect("equal", adjustable="box")
+                        ax_c = fig.add_axes([0.85, 0.21, 0.03, 0.53])
+                        cb = matplotlib.colorbar.ColorbarBase(ax_c, cmap=plt.cm.get_cmap(colormap),
+                                                             norm=color_scale, orientation="vertical")
+                        cb.set_label(f"{map_pollutant} ({pollutants_available[map_pollutant]['unit']})", fontsize=12)
 
-                                Environmental Parameters:
-                                - Ambient Temperature: {ambient_temp}°C
-                                - Average Trip Length: {trip_length} km
-                                - Road Slope: {road_slope}%
+                        if enhanced_styling:
+                            ax.set_facecolor('#f0f0f0')
 
-                                Dataset Information:
-                                - Total Links Analyzed: {len(data_link)}
-                                - Total Road Length: {data_link[:, 1].sum():.2f} km
-                                - Average Speed: {data_link[:, 3].mean():.2f} km/h
-                                - Average Flow: {data_link[:, 2].mean():.0f} vehicles
+                        status_text.text(f"Plotting {map_pollutant} emission data on map...")
+                        roads_with_data = 0
+                        roads_without_data = 0
 
-                                Emission Summary by Pollutant:
-                                {'=' * 70}
-                                """
-                            for poll in st.session_state.selected_pollutants:
-                                summary += f"""
-                                {poll} - {pollutants_available[poll]['name']}:
-                                  Standard: {pollutants_available[poll]['standard']}
-                                  Unit: {pollutants_available[poll]['unit']}
+                        for refs, osmid, name, highway_type in zip(highway_coordinate, highway_osmid, highway_names, highway_types):
+                            try:
+                                i = emission_osm_id.index(osmid)
+                            except:
+                                i = None
 
-                                  Total Passenger Car Emissions: {emissions_data[poll]['pc'].sum():.2f}
-                                  Total Light Duty Vehicle Emissions: {emissions_data[poll]['ldv'].sum():.2f}
-                                  Total Heavy Duty Vehicle Emissions: {emissions_data[poll]['hdv'].sum():.2f}
-                                  Total Motorcycle Emissions: {emissions_data[poll]['moto'].sum():.2f}
-                                  Total Emissions: {emissions_data[poll]['total'].sum():.2f}
+                            if i is not None:
+                                current_emission = hot_emission[i]
+                                color_value = scale_map.to_rgba(current_emission)
+                                if viz_mode == "Classic (Original)":
+                                    line_width = current_emission * width_scaling
+                                else:
+                                    line_width = lw_min + (current_emission * width_scaling)
+                                plot_kwargs = {'color': color_value, 'lw': line_width, 'alpha': road_transparency}
+                                if enhanced_styling:
+                                    plot_kwargs['solid_capstyle'] = 'round'
+                                ax.plot([x[0] for x in refs], [x[1] for x in refs], **plot_kwargs)
+                                roads_with_data += 1
+                            else:
+                                if show_roads_without_data:
+                                    if viz_mode == "Classic (Original)":
+                                        ax.plot([x[0] for x in refs], [x[1] for x in refs], "k-", lw=lw_nodata)
+                                    else:
+                                        ax.plot([x[0] for x in refs], [x[1] for x in refs], "gray", lw=lw_nodata, alpha=0.3)
+                                    roads_without_data += 1
 
-                                  Average per Link: {emissions_data[poll]['total'].mean():.3f}
-                                  Maximum Emission: {emissions_data[poll]['total'].max():.2f}
-                                  Minimum Emission: {emissions_data[poll]['total'].min():.2f}
-                                  Standard Deviation: {emissions_data[poll]['total'].std():.2f}
-                                """
+                        # Add labels
+                        if show_labels and viz_mode != "Classic (Original)":
+                            labeled_roads = {}
+                            major_road_types = ['motorway', 'trunk', 'primary', 'secondary']
 
+                            if label_density == "Minimal (Major roads only)":
+                                emission_percentile = 90
+                                major_only = True
+                            elif label_density == "Medium (Top 25% emissions)":
+                                emission_percentile = 75
+                                major_only = False
+                            elif label_density == "High (Top 50% emissions)":
+                                emission_percentile = 50
+                                major_only = False
+                            else:
+                                emission_percentile = 0
+                                major_only = False
+
+                            emission_threshold = np.percentile(hot_emission, emission_percentile)
+
+                            for refs, osmid, name, highway_type in zip(highway_coordinate, highway_osmid, highway_names, highway_types):
+                                try:
+                                    i = emission_osm_id.index(osmid)
+                                    current_emission = hot_emission[i]
+                                except:
+                                    continue
+
+                                if major_only:
+                                    should_label = name and highway_type in major_road_types
+                                else:
+                                    should_label = name and (highway_type in major_road_types or current_emission >= emission_threshold)
+
+                                if should_label:
+                                    center_index = len(refs) // 2
+                                    x_center = refs[center_index][0]
+                                    y_center = refs[center_index][1]
+
+                                    too_close = False
+                                    if name in labeled_roads:
+                                        for prev_x, prev_y in labeled_roads[name]:
+                                            distance = np.sqrt((x_center - prev_x)**2 + (y_center - prev_y)**2)
+                                            if distance < min_label_distance:
+                                                too_close = True
+                                                break
+
+                                    if not too_close:
+                                        angle = 0
+                                        if rotate_labels and len(refs) > 1:
+                                            dx = refs[min(center_index + 1, len(refs) - 1)][0] - refs[max(center_index - 1, 0)][0]
+                                            dy = refs[min(center_index + 1, len(refs) - 1)][1] - refs[max(center_index - 1, 0)][1]
+                                            angle = np.degrees(np.arctan2(dy, dx))
+                                            if angle > 90:
+                                                angle -= 180
+                                            elif angle < -90:
+                                                angle += 180
+
+                                        ax.text(x_center, y_center, str(name), fontsize=label_font_size,
+                                              color='black', ha='center', va='center',
+                                              rotation=angle, rotation_mode='anchor',
+                                              bbox=dict(facecolor='white', alpha=0.8, edgecolor='lightgray',
+                                                       linewidth=0.5, boxstyle='round,pad=0.3'), zorder=100)
+
+                                        if name not in labeled_roads:
+                                            labeled_roads[name] = []
+                                        labeled_roads[name].append((x_center, y_center))
+
+                        ax.set_xlim(x_min, x_max)
+                        ax.set_ylim(y_min, y_max)
+
+                        if viz_mode == "Classic (Original)":
+                            ax.set_title(f"{map_pollutant} Emission Factor Map", fontsize=14)
+                        else:
+                            ax.set_title(f"{map_pollutant} Emission Factor Map with Road Names", fontsize=14, fontweight='bold')
+
+                        ax.set_xlabel("Longitude", fontsize=12)
+                        ax.set_ylabel("Latitude", fontsize=12)
+
+                        if add_grid:
+                            ax.grid(True, alpha=grid_alpha, linestyle='--', linewidth=0.5)
+
+                        st.pyplot(fig)
+                        st.session_state.emission_map_fig = fig
+                        st.session_state.current_map_pollutant = map_pollutant
+
+                        # Statistics
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Roads with Emission Data", roads_with_data)
+                        with col2:
+                            st.metric("Roads without Data", roads_without_data)
+                        with col3:
+                            if show_labels and viz_mode != "Classic (Original)":
+                                st.metric("Unique Road Names Labeled", len(labeled_roads))
+                            else:
+                                st.metric("Max Emission", f"{max_emission_value:.2f}")
+
+                        status_text.empty()
+                        st.success(f"✅ {map_pollutant} map generated successfully!")
+
+                        # Additional map info
+                        st.info(f"""
+                        **Map Information:**
+                        - Pollutant: {map_pollutant} ({pollutants_available[map_pollutant]['name']})
+                        - Standard: {pollutants_available[map_pollutant]['standard']}
+                        - Color scale: {colormap}
+                        - Total roads visualized: {roads_with_data + roads_without_data}
+                        """)
+
+                    finally:
+                        if os.path.exists(osm_path):
+                            os.unlink(osm_path)
+
+                except Exception as e:
+                    st.error(f"❌ Error generating map: {e}")
+                    import traceback
+                    with st.expander("🐛 Debug Information"):
+                        st.code(traceback.format_exc())
+
+# ==================== TAB 7: DOWNLOAD RESULTS ====================
+with tab7:
+    st.header("📥 Download Results")
+
+    st.markdown("### 📊 Available Outputs")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**Emission Data**")
+        if 'emissions_data' in st.session_state and st.session_state.emissions_data:
+            emissions_data = st.session_state.emissions_data
+            data_link = st.session_state.data_link
+
+            # NEW: Include LDV and HDV in export data
+            export_data = {'OSM_ID': data_link[:, 0].astype(int), 'Length_km': data_link[:, 1]}
+
+            for poll in st.session_state.selected_pollutants:
+                export_data[f'{poll}_PC'] = emissions_data[poll]['pc']
+                export_data[f'{poll}_LDV'] = emissions_data[poll]['ldv']
+                export_data[f'{poll}_HDV'] = emissions_data[poll]['hdv']
+                export_data[f'{poll}_Moto'] = emissions_data[poll]['moto']
+                export_data[f'{poll}_Total'] = emissions_data[poll]['total']
+
+            results_df = pd.DataFrame(export_data)
+            csv = results_df.to_csv(index=False)
+
+            st.download_button(
+                label="⬇️ Download Multi-Pollutant Emission Data CSV",
+                data=csv,
+                file_name="multi_pollutant_emissions.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+
+            # Individual pollutant downloads
+            with st.expander("Download Individual Pollutant Data"):
+                for poll in st.session_state.selected_pollutants:
+                    # NEW: Include LDV and HDV in individual downloads
+                    poll_df = pd.DataFrame({
+                        'OSM_ID': data_link[:, 0].astype(int),
+                        'Length_km': data_link[:, 1],
+                        f'{poll}_PC': emissions_data[poll]['pc'],
+                        f'{poll}_LDV': emissions_data[poll]['ldv'],
+                        f'{poll}_HDV': emissions_data[poll]['hdv'],
+                        f'{poll}_Moto': emissions_data[poll]['moto'],
+                        f'{poll}_Total': emissions_data[poll]['total']
+                    })
+                    poll_csv = poll_df.to_csv(index=False)
+                    st.download_button(
+                        label=f"⬇️ Download {poll} Data",
+                        data=poll_csv,
+                        file_name=f"{poll}_emissions.csv",
+                        mime="text/csv",
+                        key=f"download_{poll}"
+                    )
+        else:
+            st.info("Calculate emissions first")
+
+    with col2:
+        st.markdown("**Emission Map**")
+        if 'emission_map_fig' in st.session_state:
+            buf = BytesIO()
+            st.session_state.emission_map_fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+            buf.seek(0)
+
+            map_pollutant = st.session_state.get('current_map_pollutant', 'emission')
+            st.download_button(
+                label=f"⬇️ Download {map_pollutant} Map PNG",
+                data=buf,
+                file_name=f"{map_pollutant}_emission_map.png",
+                mime="image/png",
+                use_container_width=True
+            )
+        else:
+            st.info("Generate map first")
+
+    st.markdown("---")
+    st.markdown("### 📦 Download Complete Analysis Package")
+
+    if 'emissions_data' in st.session_state and st.session_state.emissions_data:
+        if st.button("📦 Create ZIP Archive with All Results", type="primary", use_container_width=True):
+            with st.spinner("Creating comprehensive ZIP archive..."):
+                try:
+                    zip_buffer = BytesIO()
+                    emissions_data = st.session_state.emissions_data
+                    data_link = st.session_state.data_link
+
+                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                        # NEW: Main emissions data with all vehicle types
+                        export_data = {'OSM_ID': data_link[:, 0].astype(int), 'Length_km': data_link[:, 1]}
+                        for poll in st.session_state.selected_pollutants:
+                            export_data[f'{poll}_PC'] = emissions_data[poll]['pc']
+                            export_data[f'{poll}_LDV'] = emissions_data[poll]['ldv']
+                            export_data[f'{poll}_HDV'] = emissions_data[poll]['hdv']
+                            export_data[f'{poll}_Moto'] = emissions_data[poll]['moto']
+                            export_data[f'{poll}_Total'] = emissions_data[poll]['total']
+
+                        results_df = pd.DataFrame(export_data)
+                        zip_file.writestr('all_pollutants_emissions.csv', results_df.to_csv(index=False))
+
+                        # NEW: Individual pollutant files with all vehicle types
+                        for poll in st.session_state.selected_pollutants:
+                            poll_df = pd.DataFrame({
+                                'OSM_ID': data_link[:, 0].astype(int),
+                                'Length_km': data_link[:, 1],
+                                f'{poll}_PC': emissions_data[poll]['pc'],
+                                f'{poll}_LDV': emissions_data[poll]['ldv'],
+                                f'{poll}_HDV': emissions_data[poll]['hdv'],
+                                f'{poll}_Moto': emissions_data[poll]['moto'],
+                                f'{poll}_Total': emissions_data[poll]['total']
+                            })
+                            zip_file.writestr(f'{poll}_emissions.csv', poll_df.to_csv(index=False))
+
+                        # Map image if available
+                        if 'emission_map_fig' in st.session_state:
+                            map_buf = BytesIO()
+                            st.session_state.emission_map_fig.savefig(map_buf, format='png', dpi=150, bbox_inches='tight')
+                            map_buf.seek(0)
+                            map_pollutant = st.session_state.get('current_map_pollutant', 'emission')
+                            zip_file.writestr(f'{map_pollutant}_emission_map.png', map_buf.read())
+
+                        # Comprehensive summary report
+                        summary = f"""Traffic Emission Analysis Report
+{'='*70}
+
+Analysis Configuration:
+- Calculation Method: {calculation_method}
+- Pollutants Analyzed: {', '.join(st.session_state.selected_pollutants)}
+- Temperature Correction: {'Enabled' if include_temperature_correction else 'Disabled'}
+- Cold Start Correction: {'Enabled' if include_cold_start else 'Disabled'}
+- Slope Correction: {'Enabled' if include_slope_correction else 'Disabled'}
+
+Environmental Parameters:
+- Ambient Temperature: {ambient_temp}°C
+- Average Trip Length: {trip_length} km
+- Road Slope: {road_slope}%
+
+Dataset Information:
+- Total Links Analyzed: {len(data_link)}
+- Total Road Length: {data_link[:, 1].sum():.2f} km
+- Average Speed: {data_link[:, 3].mean():.2f} km/h
+- Average Flow: {data_link[:, 2].mean():.0f} vehicles
+
+Emission Summary by Pollutant:
+{'='*70}
+"""
+                        for poll in st.session_state.selected_pollutants:
                             summary += f"""
-                                {'=' * 70}
-                                Map Domain Boundaries:
-                                - Longitude Range: {x_min} to {x_max}
-                                - Latitude Range: {y_min} to {y_max}
-                                - Tolerance: {tolerance}
+{poll} - {pollutants_available[poll]['name']}:
+  Standard: {pollutants_available[poll]['standard']}
+  Unit: {pollutants_available[poll]['unit']}
+  
+  Total Passenger Car Emissions: {emissions_data[poll]['pc'].sum():.2f}
+  Total Light Duty Vehicle Emissions: {emissions_data[poll]['ldv'].sum():.2f}
+  Total Heavy Duty Vehicle Emissions: {emissions_data[poll]['hdv'].sum():.2f}
+  Total Motorcycle Emissions: {emissions_data[poll]['moto'].sum():.2f}
+  Total Emissions: {emissions_data[poll]['total'].sum():.2f}
+  
+  Average per Link: {emissions_data[poll]['total'].mean():.3f}
+  Maximum Emission: {emissions_data[poll]['total'].max():.2f}
+  Minimum Emission: {emissions_data[poll]['total'].min():.2f}
+  Standard Deviation: {emissions_data[poll]['total'].std():.2f}
+"""
 
-                                Data Quality Metrics:
-                                - Links with speed < 10 km/h: {len([x for x in data_link[:, 3] if x < 10])}
-                                - Links with speed > 130 km/h: {len([x for x in data_link[:, 3] if x > 130])}
-                                - Data completeness: {(1 - data_link[:, 1].isna().sum() / len(data_link)) * 100:.1f}%
+                        summary += f"""
+{'='*70}
+Map Domain Boundaries:
+- Longitude Range: {x_min} to {x_max}
+- Latitude Range: {y_min} to {y_max}
+- Tolerance: {tolerance}
 
-                                Standards and References:
-                                - COPERT IV: European emission inventory guidebook
-                                - IPCC: Intergovernmental Panel on Climate Change guidelines
-                                - WHO: World Health Organization air quality standards
+Data Quality Metrics:
+- Links with speed < 10 km/h: {len([x for x in data_link[:, 3] if x < 10])}
+- Links with speed > 130 km/h: {len([x for x in data_link[:, 3] if x > 130])}
+- Data completeness: {(1 - data_link[:, 1].isna().sum() / len(data_link)) * 100:.1f}%
 
-                                Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
-                                """
-                            zip_file.writestr('analysis_summary.txt', summary)
+Standards and References:
+- COPERT IV: European emission inventory guidebook
+- IPCC: Intergovernmental Panel on Climate Change guidelines
+- WHO: World Health Organization air quality standards
 
-                            # NEW: Statistics summary CSV with all vehicle types
-                            stats_data = []
-                            for poll in st.session_state.selected_pollutants:
-                                stats_data.append({
-                                    'Pollutant': poll,
-                                    'Name': pollutants_available[poll]['name'],
-                                    'Unit': pollutants_available[poll]['unit'],
-                                    'Standard': pollutants_available[poll]['standard'],
-                                    'Total_PC': emissions_data[poll]['pc'].sum(),
-                                    'Total_LDV': emissions_data[poll]['ldv'].sum(),
-                                    'Total_HDV': emissions_data[poll]['hdv'].sum(),
-                                    'Total_Moto': emissions_data[poll]['moto'].sum(),
-                                    'Total': emissions_data[poll]['total'].sum(),
-                                    'Mean': emissions_data[poll]['total'].mean(),
-                                    'Median': np.median(emissions_data[poll]['total']),
-                                    'Std': emissions_data[poll]['total'].std(),
-                                    'Min': emissions_data[poll]['total'].min(),
-                                    'Max': emissions_data[poll]['total'].max()
-                                })
-                            stats_df = pd.DataFrame(stats_data)
-                            zip_file.writestr('statistics_summary.csv', stats_df.to_csv(index=False))
+Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
+"""
+                        zip_file.writestr('analysis_summary.txt', summary)
 
-                        zip_buffer.seek(0)
-                        st.download_button(
-                            label="⬇️ Download Complete Analysis Package (ZIP)",
-                            data=zip_buffer,
-                            file_name="traffic_emission_analysis_complete.zip",
-                            mime="application/zip",
-                            use_container_width=True
-                        )
-                        st.success("✅ ZIP archive created successfully!")
+                        # NEW: Statistics summary CSV with all vehicle types
+                        stats_data = []
+                        for poll in st.session_state.selected_pollutants:
+                            stats_data.append({
+                                'Pollutant': poll,
+                                'Name': pollutants_available[poll]['name'],
+                                'Unit': pollutants_available[poll]['unit'],
+                                'Standard': pollutants_available[poll]['standard'],
+                                'Total_PC': emissions_data[poll]['pc'].sum(),
+                                'Total_LDV': emissions_data[poll]['ldv'].sum(),
+                                'Total_HDV': emissions_data[poll]['hdv'].sum(),
+                                'Total_Moto': emissions_data[poll]['moto'].sum(),
+                                'Total': emissions_data[poll]['total'].sum(),
+                                'Mean': emissions_data[poll]['total'].mean(),
+                                'Median': np.median(emissions_data[poll]['total']),
+                                'Std': emissions_data[poll]['total'].std(),
+                                'Min': emissions_data[poll]['total'].min(),
+                                'Max': emissions_data[poll]['total'].max()
+                            })
+                        stats_df = pd.DataFrame(stats_data)
+                        zip_file.writestr('statistics_summary.csv', stats_df.to_csv(index=False))
 
-                        # Show what's included
-                        with st.expander("📋 Package Contents"):
-                            st.markdown("""
-                                                        **Included Files:**
-                                                        - `all_pollutants_emissions.csv` - Combined data for all pollutants (PC, LDV, HDV, Moto)
-                                                        - Individual CSV files for each pollutant with all vehicle types
-                                                        - `emission_map.png` - Visual map of emissions (if generated)
-                                                        - `analysis_summary.txt` - Comprehensive text report
-                                                        - `statistics_summary.csv` - Statistical summary table with vehicle type breakdown
-                                                        """)
+                    zip_buffer.seek(0)
+                    st.download_button(
+                        label="⬇️ Download Complete Analysis Package (ZIP)",
+                        data=zip_buffer,
+                        file_name="traffic_emission_analysis_complete.zip",
+                        mime="application/zip",
+                        use_container_width=True
+                    )
+                    st.success("✅ ZIP archive created successfully!")
 
-                    except Exception as e:
-                        st.error(f"❌ Error creating ZIP: {e}")
-                        import traceback
+                    # Show what's included
+                    with st.expander("📋 Package Contents"):
+                        st.markdown("""
+                        **Included Files:**
+                        - `all_pollutants_emissions.csv` - Combined data for all pollutants (PC, LDV, HDV, Moto)
+                        - Individual CSV files for each pollutant with all vehicle types
+                        - `emission_map.png` - Visual map of emissions (if generated)
+                        - `analysis_summary.txt` - Comprehensive text report
+                        - `statistics_summary.csv` - Statistical summary table with vehicle type breakdown
+                        """)
 
-                        with st.expander("🐛 Debug Information"):
-                            st.code(traceback.format_exc())
-                    else:
-                        st.info("Calculate emissions first to create download package")
+                except Exception as e:
+                    st.error(f"❌ Error creating ZIP: {e}")
+                    import traceback
+                    with st.expander("🐛 Debug Information"):
+                        st.code(traceback.format_exc())
+    else:
+        st.info("Calculate emissions first to create download package")
 
-                    st.markdown("---")
-                    st.markdown("### 📚 Export Formats")
-                    st.info("""
-                                    **Available Export Formats:**
-                                    - **CSV**: Comma-separated values for spreadsheet applications
-                                    - **PNG**: High-resolution maps (150 DPI) for reports and presentations
-                                    - **ZIP**: Complete analysis package with all data and documentation
+    st.markdown("---")
+    st.markdown("### 📚 Export Formats")
+    st.info("""
+    **Available Export Formats:**
+    - **CSV**: Comma-separated values for spreadsheet applications
+    - **PNG**: High-resolution maps (150 DPI) for reports and presentations
+    - **ZIP**: Complete analysis package with all data and documentation
+    
+    **Recommended Uses:**
+    - Academic Research: Use ZIP package for complete documentation
+    - Policy Reports: Use PNG maps with summary statistics
+    - Data Analysis: Use individual CSV files for further processing
+    
+    **Vehicle Type Breakdown:**
+    All exports now include separate columns for:
+    - PC: Passenger Cars
+    - LDV: Light Duty Vehicles
+    - HDV: Heavy Duty Vehicles
+    - Moto: Motorcycles
+    - Total: Sum of all vehicle types
+    """)
 
-                                    **Recommended Uses:**
-                                    - Academic Research: Use ZIP package for complete documentation
-                                    - Policy Reports: Use PNG maps with summary statistics
-                                    - Data Analysis: Use individual CSV files for further processing
-
-                                    **Vehicle Type Breakdown:**
-                                    All exports now include separate columns for:
-                                    - PC: Passenger Cars
-                                    - LDV: Light Duty Vehicles
-                                    - HDV: Heavy Duty Vehicles
-                                    - Moto: Motorcycles
-                                    - Total: Sum of all vehicle types
-                                    """)
-
-                # Footer
-                st.markdown("---")
-                st.markdown("""
-                                <div style='text-align: center; color: #666; padding: 20px;'>
-                                    <p><strong>Advanced Traffic Emission Calculator v2.0</strong></p>
-                                    <p>Built with COPERT IV, IPCC, and EPA MOVES methodologies</p>
-                                    <p>Now with support for PC, LDV, HDV, and Motorcycle emissions</p>
-                                    <p>Standards: EEA Guidebook 2019, IPCC 2019 Guidelines, WHO Air Quality Standards</p>
-                                    <p>© 2025 - Developed by SHassan 🎈</p>
-                                </div>
-                                """, unsafe_allow_html=True)
+# Footer
+st.markdown("---")
+st.markdown("""
+<div style='text-align: center; color: #666; padding: 20px;'>
+    <p><strong>Advanced Traffic Emission Calculator v2.0</strong></p>
+    <p>Built with COPERT IV, IPCC, and EPA MOVES methodologies</p>
+    <p>Now with support for PC, LDV, HDV, and Motorcycle emissions</p>
+    <p>Standards: EEA Guidebook 2019, IPCC 2019 Guidelines, WHO Air Quality Standards</p>
+    <p>© 2024 - Developed by SHassan 🎈</p>
+</div>
+""", unsafe_allow_html=True)
