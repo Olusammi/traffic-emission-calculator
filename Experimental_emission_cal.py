@@ -144,23 +144,27 @@ tolerance = st.sidebar.number_input("Tolerance", value=0.005, format="%.3f")
 ncore = st.sidebar.number_input("Number of Cores", value=8, min_value=1, max_value=16)
 
 # ======== MAKE TABS STICKY (FROZEN) WHEN SCROLLING ========
-st.markdown("""
-<style>
-/* Freeze the tabs container */
-.stTabs [data-baseweb="tab-list"] {
-    position: sticky;
-    top: 0;
-    background-color: white;
-    z-index: 999;
-    padding-top: 10px;
-}
+st.markdown(
+    """
+    <style>
+    /* Target the container that holds the st.tabs elements */
+    /* This selector might be subject to change with future Streamlit updates */
+    .stTabs [data-baseweb="tab-list"] {
+        position: sticky;
+        top: 0px; /* Adjust this value if you have a header above the tabs */
+        background-color: white; /* Match your app background color */
+        z-index: 1000; /* Ensure the tabs are on top of other content */
+    }
 
-/* Optional: Add shadow so the tabs look elevated when scrolling */
-.stTabs [data-baseweb="tab-list"] {
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-}
-</style>
-""", unsafe_allow_html=True)
+    /* Optional: Hide the default scrollbar on the main app content */
+    /* This might not be needed, but is sometimes used with sticky headers */
+    .block-container {
+        padding-top: 2rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ==================== MAIN TABS ====================
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
@@ -1497,5 +1501,6 @@ st.markdown("""
     <p>© 2024 - Developed by SHassan 🎈</p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
