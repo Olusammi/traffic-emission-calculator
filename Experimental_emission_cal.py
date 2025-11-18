@@ -132,6 +132,25 @@ with proportion_files:
     copert_2stroke = st.file_uploader("2-Stroke Motorcycle", type=['dat','txt'], key='2s')
     copert_4stroke = st.file_uploader("4-Stroke Motorcycle", type=['dat','txt'], key='4s')
 
+# ======== MAKE TABS STICKY (FROZEN) WHEN SCROLLING ========
+st.markdown("""
+<style>
+/* Freeze the tabs container */
+.stTabs [data-baseweb="tab-list"] {
+    position: sticky;
+    top: 0;
+    background-color: white;
+    z-index: 999;
+    padding-top: 10px;
+}
+
+/* Optional: Add shadow so the tabs look elevated when scrolling */
+.stTabs [data-baseweb="tab-list"] {
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+</style>
+""", unsafe_allow_html=True)
+
 # Map parameters
 st.sidebar.header("🗺️ Map Parameters")
 st.sidebar.markdown("**Domain Boundaries**")
@@ -1478,3 +1497,4 @@ st.markdown("""
     <p>© 2024 - Developed by SHassan 🎈</p>
 </div>
 """, unsafe_allow_html=True)
+
