@@ -1241,12 +1241,7 @@ with tab7:
         - HDV: Heavy Duty Vehicles
         - Moto: Motorcycles
         - Total: Sum of all vehicle types
-        """)   
-            except Exception as e:
-                st.error(f"❌ Error creating ZIP: {e}")
-                import traceback
-                with st.expander("🐛 Debug Information"):
-                    st.code(traceback.format_exc())
+        """)
     else:
         st.info("Calculate emissions first to create download package")
 
@@ -1261,4 +1256,5 @@ st.markdown("""
     <p>© 2024 - Developed with Gemini</p>
 </div>
 """, unsafe_allow_html=True)
+
 
