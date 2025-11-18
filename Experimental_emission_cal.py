@@ -1550,7 +1550,7 @@ with tab4:
                                             poll_df = pd.DataFrame({
                                                 'OSM_ID': data_link[:, 0].astype(int),
                                                 'Length_km': data_link[:, 1],
-                                                f'{poll}_PC': emissions_data[poll]['pc
+                                                f'{poll}_PC': emissions_data[poll]['pc'],
                                                 f'{poll}_LDV': emissions_data[poll]['ldv'],
                                                 f'{poll}_HDV': emissions_data[poll]['hdv'],
                                                 f'{poll}_Moto': emissions_data[poll]['moto'],
@@ -1716,3 +1716,4 @@ with tab4:
                                                 <p>© 2024 - Developed by SHassan 🎈</p>
                                             </div>
                                             """, unsafe_allow_html=True)
+
