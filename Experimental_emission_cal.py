@@ -1063,6 +1063,7 @@ with tab6:
         try:
             # Temporarily save the uploaded file for the parsing module
             with st.spinner("Parsing OSM network to retrieve road coordinates..."):
+                # Use the imported tempfile module
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.osm') as tmp:
                     osm_file.seek(0)
                     tmp.write(osm_file.read())
@@ -1073,8 +1074,6 @@ with tab6:
                 selected_zone.append(selected_zone[0])
                 
                 # Retrieve road geometries
-                # NOTE: I am assuming 'osm_network' is available and functional in your main script's environment.
-                import osm_network # Moved import inside the block to ensure it's loaded if needed
                 highway_coordinate, highway_osmid, highway_names, highway_types = osm_network.retrieve_highway(
                     osm_path, selected_zone, tolerance, int(ncore))
             
@@ -1131,7 +1130,6 @@ with tab6:
             # If map_df_lines is empty, it means no emission data matched the OSM file
             if map_df_lines.empty:
                 st.warning("No emission data found matching the provided road network geometry.")
-                # REMOVED: The illegal 'return' here. The code will simply finish the 'with tab6:' block.
 
             # We only proceed with plotting if the DataFrame is not empty
             if not map_df_lines.empty:
@@ -1190,6 +1188,7 @@ with tab6:
     else:
         st.info("Please calculate emissions first in the 'Calculate Emissions' tab.")
 
+# End of Tab 6
 # ==================== TAB 7: DOWNLOAD RESULTS ====================
 with tab7:
     st.header("📥 Download Results")
@@ -1330,6 +1329,7 @@ st.markdown("""
     <p>© 2024 - Developed with Gemini</p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
