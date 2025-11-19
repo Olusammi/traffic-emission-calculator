@@ -869,23 +869,46 @@ NAN     NAN      NAN        NAN        NAN
                 return base_factor
 
     # Definition of Emission Factor (EF) for motorcycles of engine displacement
-    # over 50 cm3. A=alpha B=beta,..H=eta R =reduction factor
-    def EFMotorcycle(self, pollutant, speed, engine_type, copert_class_motorcycle, **kwargs):
-        # Ensure 'V' is defined (assuming speed is the input variable for velocity)
-        V = speed 
-        if copert_class_motorcycle in [self.class_moto_Conventional,
-                                       self.class_moto_Euro_1, self.class_moto_Euro_2,
-                                       self.class_moto_Euro_3, self.class_moto_Euro_4,
-                               self.class_moto_Euro_5]:
-            # Simplified motorcycle emission factor
-            base_factor = 0.15
-            if pollutant == self.pollutant_CO:
-                return base_factor * 3.0
-            elif pollutant == self.pollutant_NOx:
-                return base_factor * 0.8
-            elif pollutant == self.pollutant_PM:
-                return base_factor * 0.03
-            else:
-                return base_factor
+# over 50 cm3. A=alpha B=beta,..H=eta R =reduction factor
+def EFMotorcycle(self, pollutant, speed, engine_type, copert_class_motorcycle, **kwargs):
+    V = speed 
+    if copert_class_motorcycle in [self.class_moto_Conventional,
+                                   self.class_moto_Euro_1, self.class_moto_Euro_2,
+                                   self.class_moto_Euro_3, self.class_moto_Euro_4,
+                                   self.class_moto_Euro_5]:
+        i_engine_type = self.index_moto_engine_type[engine_type]
+        
+        # Find the key (name_engine_type) associated with the value (engine_type)
+        name_engine_type = next((key for key, value in self.corr_engine_type.items() if value == engine_type), None)
+        
+        if name_engine_type is None:
+            # Handle case where the engine type value isn't found in the dictionary
+            print(f"Error: Engine type value '{engine_type}' not found in corr_engine_type mapping.")
+            return 0
+
+        i_pollutant = self.index_pollutant[pollutant]
+        i_copert_class_motorcycle = self.index_copert_class_motorcycle[copert_class_motorcycle]          
+        Vmin, Vmax, A, B, G, D, E, Z, H, R \
+            = self.motorcycle_parameter[i_engine_type, i_pollutant,	
+                                  i_copert_class_motorcycle]
+        if V < Vmin or V > Vmax:
+            raise Exception( 'The input speed must be in the ' \
+                + 'range of [' + str(round(Vmin, 1)) + ', ' \
+                + str(round(Vmax, 1)) + '] when calculating ' \
+                'emission factors for motorcycles when engine type is ' \
+                + name_engine_type + '.')
         else:
-            return 0.0
+            return self.Eq_56(A, B, G, D, E, Z, H, R, V)
+    else:
+        return 0.0
+
+"""Motorcycles emission computing for motorcycle only"""
+def Emission_M(self, pollutant, speed, distance, engine_type, copert_class_motorcycle, **kwargs):
+    if engine_type == self.engine_type_moto_two_stroke_more_50:
+        return distance \
+            * self.EFMotorcycle(pollutant, speed, engine_type, copert_class_motorcycle, **kwargs)
+    elif engine_type == self.engine_type_moto_four_stroke_50_250:
+        return distance \
+            * self.EFMotorcycle(pollutant, speed, engine_type, copert_class_motorcycle, **kwargs)
+    else:
+        return 0.0
