@@ -1041,8 +1041,7 @@ with tab5:
             st.info("No pollutants selected for analysis.")
     else:
         st.info("Please calculate emissions first in the 'Calculate Emissions' tab.")
-
-for this section in the app 
+ 
 # ==================== TAB 6: INTERACTIVE MAP ====================
 # ==================== TAB 6: INTERACTIVE MAP ====================
 with tab6:
@@ -1552,5 +1551,6 @@ st.markdown("""
     <p>© 2025 - Developed with Gemini</p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
