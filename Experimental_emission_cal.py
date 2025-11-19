@@ -1042,116 +1042,319 @@ with tab5:
     else:
         st.info("Please calculate emissions first in the 'Calculate Emissions' tab.")
 
+for this section in the app 
 # ==================== TAB 6: INTERACTIVE MAP ====================
 with tab6:
-    st.header("🗺️ Interactive Emission Map")
-    st.markdown("Visualize the calculated emissions on the road network.")
-    
-    if 'emissions_data' in st.session_state and 'data_link' in st.session_state:
-        
-        # Load data
-        emissions_data = st.session_state.emissions_data
-        data_link_np = st.session_state.data_link
-        
-        # NEW: Vehicle Type Selection for Mapping
-        col1, col2 = st.columns(2)
-        with col1:
-            vehicle_types_to_map = ['Total', 'PC', 'LDV', 'HDV', 'Moto']
-            map_type = st.selectbox(
-                "Select Vehicle Type to Map", 
-                options=vehicle_types_to_map,
-                key='map_type_select',
-                index=0,  # Default to 'Total'
-                help="Choose which vehicle type's emissions to visualize on the map"
-            )
-        
-        with col2:
-            # Existing Pollutant Selection
-            map_pollutant = st.selectbox(
-                "Select Pollutant to Map", 
-                options=st.session_state.selected_pollutants,
-                key='map_pollutant_select',
-                help="Choose which pollutant to visualize on the map"
-            )
-        
-        # Load OSM file content
-        if osm_file is not None:
-            # In a real application, you would parse the OSM file here to get coordinates.
-            st.warning("OSM file parsing is complex and skipped. The map below is a placeholder visualization.")
-        
-        # Prepare data for map visualization using the selected vehicle type
-        map_df = pd.DataFrame({
-            'OSM_ID': data_link_np[:, 0],
-            'Latitude': (data_link_np[:, 0] % 1000) * 0.0001 + y_min, # Placeholder Lat
-            'Longitude': (data_link_np[:, 0] % 1000) * 0.0001 + x_min, # Placeholder Lon
-            'Emission_Value': emissions_data[map_pollutant][map_type.lower()],  # UPDATED: Use selected vehicle type
-            'Speed': data_link_np[:, 3]
-        })
-        
-        # Calculate max and min for color scale
-        max_emission = map_df['Emission_Value'].max()
-        min_emission = map_df['Emission_Value'].min()
-        
-        # Create a scatter map for visualization
-        st.subheader(f"{map_type} {map_pollutant} Emission Density Map")  # UPDATED: Include vehicle type in title
-        st.caption(f"Note: Latitude/Longitude data is simplified/placeholder as the full OSM parsing is not included in this script.")
-        
-        fig_map = go.Figure(data=go.Scattergeo(
-            lon=map_df['Longitude'],
-            lat=map_df['Latitude'],
-            text=map_df.apply(lambda row: f"Link ID: {int(row['OSM_ID'])}<br>{map_type} {map_pollutant}: {row['Emission_Value']:.2f} {pollutants_available[map_pollutant]['unit']}", axis=1),  # UPDATED: Include vehicle type in hover
-            mode='markers',
-            marker=dict(
-                size=10,
-                opacity=0.8,
-                reversescale=True,
-                autocolorscale=False,
-                symbol='circle',
-                line=dict(width=1, color='rgba(102, 102, 102)'),
-                cmax=max_emission,
-                cmin=min_emission,
-                colorbar_title=f"{map_type} {map_pollutant}",  # UPDATED: Include vehicle type in colorbar
-                color=map_df['Emission_Value'],
-                colorscale=px.colors.sequential.Viridis
-            )))
+    st.header("🗺️ Interactive Emission Map")
+    st.markdown("Visualize the calculated emissions on the road network.")
+    
+    if 'emissions_data' in st.session_state and 'data_link' in st.session_state:
+        
+        # Load data
+        emissions_data = st.session_state.emissions_data
+        data_link_np = st.session_state.data_link
+        
+        # Select pollutant for visualization
+        map_pollutant = st.selectbox("Select Pollutant to Map", options=st.session_state.selected_pollutants)
+        
+        # Load OSM file content (simplified placeholder, actual OSM file reading is complex)
+        if osm_file is not None:
+            # In a real application, you would parse the OSM file here to get coordinates.
+            st.warning("OSM file parsing is complex and skipped. The map below is a placeholder visualization.")
+        
+        # Prepare data for map visualization (using total emission and speed as a proxy for link properties)
+        map_df = pd.DataFrame({
+            'OSM_ID': data_link_np[:, 0],
+            'Latitude': (data_link_np[:, 0] % 1000) * 0.0001 + y_min, # Placeholder Lat
+            'Longitude': (data_link_np[:, 0] % 1000) * 0.0001 + x_min, # Placeholder Lon
+            'Emission_Value': emissions_data[map_pollutant]['total'],
+            'Speed': data_link_np[:, 3]
+        })
+        
+        # Calculate max and min for color scale
+        max_emission = map_df['Emission_Value'].max()
+        min_emission = map_df['Emission_Value'].min()
+        
+        # Create a scatter map for visualization (since we don't have geo-coords and line drawing for links)
+        st.subheader(f"Total {map_pollutant} Emission Density Map")
+        st.caption(f"Note: Latitude/Longitude data is simplified/placeholder as the full OSM parsing is not included in this script.")
+        
+        fig_map = go.Figure(data=go.Scattergeo(
+            lon=map_df['Longitude'],
+            lat=map_df['Latitude'],
+            text=map_df.apply(lambda row: f"Link ID: {int(row['OSM_ID'])}<br>Emission: {row['Emission_Value']:.2f} {pollutants_available[map_pollutant]['unit']}", axis=1),
+            mode='markers',
+            marker=dict(
+                size=10,
+                opacity=0.8,
+                reversescale=True,
+                autocolorscale=False,
+                symbol='circle',
+                line=dict(width=1, color='rgba(102, 102, 102)'),
+                cmax=max_emission,
+                cmin=min_emission,
+                colorbar_title=f"Total {map_pollutant}",
+                color=map_df['Emission_Value'],
+                colorscale=px.colors.sequential.Viridis
+            )))
 
-        fig_map.update_layout(
-            geo=dict(
-                scope='world',
-                showland=True,
-                landcolor='rgb(217, 217, 217)',
-                subunitcolor='rgb(255, 255, 255)',
-                countrycolor='rgb(255, 255, 255)',
-                showlakes=True,
-                lakecolor='rgb(255, 255, 255)',
-                showsubunits=True,
-                showcountries=True,
-                lonaxis=dict(range=[x_min - tolerance, x_max + tolerance]),
-                lataxis=dict(range=[y_min - tolerance, y_max + tolerance]),
-            ),
-            title_text=f"Geographical Distribution of {map_type} {map_pollutant} Emissions",  # UPDATED: Include vehicle type
-            margin={"r":0,"t":50,"l":0,"b":0}
-        )
-        st.plotly_chart(fig_map, use_container_width=True)
-        
-        # NEW: Add summary statistics for the selected vehicle type and pollutant
-        st.subheader(f"📊 {map_type} {map_pollutant} Summary")
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric(f"Total {map_type} {map_pollutant}", 
-                     f"{emissions_data[map_pollutant][map_type.lower()].sum():.2f} {pollutants_available[map_pollutant]['unit']}")
-        with col2:
-            st.metric(f"Average per Link", 
-                     f"{emissions_data[map_pollutant][map_type.lower()].mean():.3f} {pollutants_available[map_pollutant]['unit']}")
-        with col3:
-            st.metric(f"Maximum", 
-                     f"{emissions_data[map_pollutant][map_type.lower()].max():.2f} {pollutants_available[map_pollutant]['unit']}")
-        with col4:
-            st.metric(f"Minimum", 
-                     f"{emissions_data[map_pollutant][map_type.lower()].min():.2f} {pollutants_available[map_pollutant]['unit']}")
-        
-    else:
-        st.info("Please calculate emissions first in the 'Calculate Emissions' tab.")
+        fig_map.update_layout(
+            geo=dict(
+                scope='world',
+                showland=True,
+                landcolor='rgb(217, 217, 217)',
+                subunitcolor='rgb(255, 255, 255)',
+                countrycolor='rgb(255, 255, 255)',
+                showlakes=True,
+                lakecolor='rgb(255, 255, 255)',
+                showsubunits=True,
+                showcountries=True,
+                lonaxis=dict(range=[x_min - tolerance, x_max + tolerance]),
+                lataxis=dict(range=[y_min - tolerance, y_max + tolerance]),
+            ),
+            title_text=f"Geographical Distribution of {map_pollutant} Emissions",
+            margin={"r":0,"t":50,"l":0,"b":0}
+        )
+        st.plotly_chart(fig_map, use_container_width=True)
+        
+        
+    else:
+        st.info("Please calculate emissions first in the 'Calculate Emissions' tab.")
+
+
+it is not plotting the map like i have in a previous code below:
+
+st.header("Emission Factor Map")
+    has_emissions = 'hot_emission' in st.session_state
+    if not has_emissions:
+        st.warning("⚠️ Please calculate emissions first")
+    elif osm_file is None:
+        st.warning("⚠️ Please upload OSM network file")
+    else:
+        st.info("📍 Ready to generate emission map")
+        st.subheader("🎨 Visualization Mode")
+        viz_mode = st.radio("Select visualization style:", ["Classic (Original)", "Enhanced with Labels", "Custom"], 
+                            horizontal=True, help="Classic: Original | Enhanced: Smart labels | Custom: Full control")
+        st.markdown("---")
+        
+        if viz_mode == "Classic (Original)":
+            st.markdown("**Classic Mode Settings**")
+            col1, col2 = st.columns(2)
+            with col1:
+                colormap = st.selectbox("Color Map", ['jet','viridis','plasma','RdYlGn_r','hot'], index=0)
+                fig_size = st.slider("Figure Size", 8, 16, 10)
+            with col2:
+                show_roads_without_data = st.checkbox("Show roads without emission data", value=False)
+                add_grid = st.checkbox("Add grid lines", value=False)
+            line_width_multiplier = 1.0
+            show_labels = False
+            label_density = "Minimal (Major roads only)"
+            rotate_labels = False
+            enhanced_styling = False
+            road_transparency = 1.0
+            grid_alpha = 0.3
+            label_font_size = 7
+            min_label_distance = 0.002
+        elif viz_mode == "Enhanced with Labels":
+            st.markdown("**Enhanced Mode Settings**")
+            col1, col2 = st.columns(2)
+            with col1:
+                colormap = st.selectbox("Color Map", ['jet','viridis','plasma','RdYlGn_r','hot','coolwarm'], index=0)
+                fig_size = st.slider("Figure Size", 8, 16, 12)
+                line_width_multiplier = st.slider("Line Width Scale", 0.5, 5.0, 2.0, 0.5)
+            with col2:
+                label_density = st.selectbox("Road Label Density", ["Minimal (Major roads only)", "Medium (Top 25% emissions)", "High (Top 50% emissions)"], index=1)
+                show_roads_without_data = st.checkbox("Show roads without emission data", value=True)
+                rotate_labels = st.checkbox("Rotate labels along roads", value=True)
+            show_labels = True
+            enhanced_styling = True
+            add_grid = True
+            road_transparency = 0.8
+            grid_alpha = 0.2
+            label_font_size = 7
+            min_label_distance = 0.002
+        else:
+            st.markdown("**Custom Mode Settings**")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown("**Appearance**")
+                colormap = st.selectbox("Color Map", ['jet','viridis','plasma','RdYlGn_r','hot','coolwarm','inferno'], index=0)
+                fig_size = st.slider("Figure Size", 8, 20, 12)
+                line_width_multiplier = st.slider("Line Width Scale", 0.1, 10.0, 2.0, 0.5)
+                enhanced_styling = st.checkbox("Enhanced styling", value=True)
+            with col2:
+                st.markdown("**Road Display**")
+                show_roads_without_data = st.checkbox("Show roads without emission data", value=True)
+                road_transparency = st.slider("Road transparency", 0.0, 1.0, 0.8, 0.1)
+                add_grid = st.checkbox("Add grid lines", value=True)
+                grid_alpha = st.slider("Grid transparency", 0.0, 1.0, 0.2, 0.1) if add_grid else 0.2
+            with col3:
+                st.markdown("**Labels**")
+                show_labels = st.checkbox("Show road labels", value=True)
+                if show_labels:
+                    label_density = st.selectbox("Label Density", ["Minimal (Major roads only)", "Medium (Top 25% emissions)", 
+                                                  "High (Top 50% emissions)", "Maximum (All named roads)"], index=1)
+                    rotate_labels = st.checkbox("Rotate labels along roads", value=True)
+                    label_font_size = st.slider("Label font size", 4, 12, 7)
+                    min_label_distance = st.slider("Min distance between labels", 0.001, 0.01, 0.002, 0.001)
+                else:
+                    label_density = "Minimal (Major roads only)"
+                    rotate_labels = False
+                    label_font_size = 7
+                    min_label_distance = 0.002
+        
+        st.markdown("---")
+        if st.button("🗺️ Generate Map", type="primary", use_container_width=True):
+            with st.spinner("Generating emission map..."):
+                try:
+                    import osm_network
+                    hot_emission = st.session_state.hot_emission
+                    data_link = st.session_state.data_link
+                    import tempfile, os
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.osm') as tmp:
+                        osm_file.seek(0)
+                        tmp.write(osm_file.read())
+                        osm_path = tmp.name
+                    try:
+                        selected_zone = [[x_min, y_max], [x_min, y_min], [x_max, y_min], [x_max, y_max]]
+                        selected_zone.append(selected_zone[0])
+                        status_text = st.empty()
+                        status_text.text("Parsing OSM network...")
+                        highway_coordinate, highway_osmid, highway_names, highway_types = osm_network.retrieve_highway(osm_path, selected_zone, tolerance, int(ncore))
+                        status_text.text("OSM network parsed successfully!")
+                        max_emission_value = np.max(hot_emission)
+                        epsilon = 1e-9
+                        if viz_mode == "Classic (Original)":
+                            lw_max = 0.00004
+                            lw_min = 0.00002
+                            width_scaling = (lw_max - lw_min) / (max_emission_value + epsilon) + lw_min
+                            lw_nodata = 0.003
+                        else:
+                            lw_max = 3.0 * line_width_multiplier
+                            lw_min = 0.5 * line_width_multiplier
+                            width_scaling = (lw_max - lw_min) / (max_emission_value + epsilon)
+                            lw_nodata = 0.3
+                        color_scale = colors.Normalize(vmin=0, vmax=max_emission_value + epsilon)
+                        scale_map = cmx.ScalarMappable(norm=color_scale, cmap=colormap)
+                        emission_osm_id = [int(x) for x in data_link[:, 0]]
+                        fig = plt.figure(figsize=(fig_size, fig_size - 1), dpi=100)
+                        ax = fig.add_axes([0.1, 0.1, 0.75, 0.75])
+                        ax.set_aspect("equal", adjustable="box")
+                        ax_c = fig.add_axes([0.85, 0.21, 0.03, 0.53])
+                        cb = matplotlib.colorbar.ColorbarBase(ax_c, cmap=plt.cm.get_cmap(colormap), norm=color_scale, orientation="vertical")
+                        cb.set_label("g/km", fontsize=12)
+                        if enhanced_styling:
+                            ax.set_facecolor('#f0f0f0')
+                        status_text.text("Plotting emission data on map...")
+                        roads_with_data = 0
+                        roads_without_data = 0
+                        for refs, osmid, name, highway_type in zip(highway_coordinate, highway_osmid, highway_names, highway_types):
+                            try:
+                                i = emission_osm_id.index(osmid)
+                            except:
+                                i = None
+                            if i is not None:
+                                current_emission = hot_emission[i]
+                                color_value = scale_map.to_rgba(current_emission)
+                                if viz_mode == "Classic (Original)":
+                                    line_width = current_emission * width_scaling
+                                else:
+                                    line_width = lw_min + (current_emission * width_scaling)
+                                plot_kwargs = {'color': color_value, 'lw': line_width, 'alpha': road_transparency}
+                                if enhanced_styling:
+                                    plot_kwargs['solid_capstyle'] = 'round'
+                                ax.plot([x[0] for x in refs], [x[1] for x in refs], **plot_kwargs)
+                                roads_with_data += 1
+                            else:
+                                if show_roads_without_data:
+                                    if viz_mode == "Classic (Original)":
+                                        ax.plot([x[0] for x in refs], [x[1] for x in refs], "k-", lw=lw_nodata)
+                                    else:
+                                        ax.plot([x[0] for x in refs], [x[1] for x in refs], "gray", lw=lw_nodata, alpha=0.3)
+                                    roads_without_data += 1
+                        if show_labels and viz_mode != "Classic (Original)":
+                            labeled_roads = {}
+                            major_road_types = ['motorway', 'trunk', 'primary', 'secondary']
+                            if label_density == "Minimal (Major roads only)":
+                                emission_percentile = 90
+                                major_only = True
+                            elif label_density == "Medium (Top 25% emissions)":
+                                emission_percentile = 75
+                                major_only = False
+                            elif label_density == "High (Top 50% emissions)":
+                                emission_percentile = 50
+                                major_only = False
+                            else:
+                                emission_percentile = 0
+                                major_only = False
+                            emission_threshold = np.percentile(hot_emission, emission_percentile)
+                            for refs, osmid, name, highway_type in zip(highway_coordinate, highway_osmid, highway_names, highway_types):
+                                try:
+                                    i = emission_osm_id.index(osmid)
+                                    current_emission = hot_emission[i]
+                                except:
+                                    continue
+                                if major_only:
+                                    should_label = name and highway_type in major_road_types
+                                else:
+                                    should_label = name and (highway_type in major_road_types or current_emission >= emission_threshold)
+                                if should_label:
+                                    center_index = len(refs) // 2
+                                    x_center = refs[center_index][0]
+                                    y_center = refs[center_index][1]
+                                    too_close = False
+                                    if name in labeled_roads:
+                                        for prev_x, prev_y in labeled_roads[name]:
+                                            distance = np.sqrt((x_center - prev_x)**2 + (y_center - prev_y)**2)
+                                            if distance < min_label_distance:
+                                                too_close = True
+                                                break
+                                    if not too_close:
+                                        angle = 0
+                                        if rotate_labels and len(refs) > 1:
+                                            dx = refs[min(center_index + 1, len(refs) - 1)][0] - refs[max(center_index - 1, 0)][0]
+                                            dy = refs[min(center_index + 1, len(refs) - 1)][1] - refs[max(center_index - 1, 0)][1]
+                                            angle = np.degrees(np.arctan2(dy, dx))
+                                            if angle > 90:
+                                                angle -= 180
+                                            elif angle < -90:
+                                                angle += 180
+                                        ax.text(x_center, y_center, str(name), fontsize=label_font_size, color='black', ha='center', va='center',
+                                                rotation=angle, rotation_mode='anchor', bbox=dict(facecolor='white', alpha=0.8, edgecolor='lightgray',
+                                                linewidth=0.5, boxstyle='round,pad=0.3'), zorder=100)
+                                        if name not in labeled_roads:
+                                            labeled_roads[name] = []
+                                        labeled_roads[name].append((x_center, y_center))
+                        ax.set_xlim(x_min, x_max)
+                        ax.set_ylim(y_min, y_max)
+                        if viz_mode == "Classic (Original)":
+                            ax.set_title("Emission Factor Map", fontsize=14)
+                        else:
+                            ax.set_title("Emission Factor Map with Road Names", fontsize=14, fontweight='bold')
+                        ax.set_xlabel("Longitude", fontsize=12)
+                        ax.set_ylabel("Latitude", fontsize=12)
+                        if add_grid:
+                            ax.grid(True, alpha=grid_alpha, linestyle='--', linewidth=0.5)
+                        st.pyplot(fig)
+                        st.session_state.emission_map_fig = fig
+                        if show_labels and viz_mode != "Classic (Original)":
+                            col1, col2, col3 = st.columns(3)
+                            with col1: st.metric("Roads with Emission Data", roads_with_data)
+                            with col2: st.metric("Roads without Data", roads_without_data)
+                            with col3: st.metric("Unique Road Names Labeled", len(labeled_roads))
+                        else:
+                            col1, col2 = st.columns(2)
+                            with col1: st.metric("Roads with Emission Data", roads_with_data)
+                            with col2: st.metric("Roads without Data", roads_without_data)
+                        status_text.empty()
+                        st.success("✅ Map generated successfully!")
+                    finally:
+                        if os.path.exists(osm_path):
+                            os.unlink(osm_path)
+                except Exception as e:
+                    st.error(f"Error: {e}")
+                    import traceback
+                    st.code(traceback.format_exc())
 
 # ==================== TAB 7: DOWNLOAD RESULTS ====================
 with tab7:
@@ -1293,3 +1496,4 @@ st.markdown("""
     <p>© 2025 - Developed with Gemini</p>
 </div>
 """, unsafe_allow_html=True)
+
