@@ -1073,104 +1073,117 @@ with tab6:
                 selected_zone.append(selected_zone[0])
                 
                 # Retrieve road geometries
+                # NOTE: I am assuming 'osm_network' is available and functional in your main script's environment.
+                # If you get an error here, you might need to adjust how 'osm_network' is loaded or used.
+                import osm_network # Moved import inside the block to ensure it's loaded if needed
                 highway_coordinate, highway_osmid, highway_names, highway_types = osm_network.retrieve_highway(
                     osm_path, selected_zone, tolerance, int(ncore))
             
             # Clean up the temporary file
             if os.path.exists(osm_path):
                 os.unlink(osm_path)
+            
+            # Flag to proceed if parsing was successful
+            parsing_successful = True
 
         except Exception as e:
             st.error(f"❌ Error during OSM parsing. Ensure 'osm_network' module is correctly imported and data is valid: {e}")
-            import traceback; st.code(traceback.format_exc())
-            return
-        
-        # --- 2. Data Preparation for Plotly Lines ---
-        
-        # Extract the emission value array and the road IDs from the calculated data
-        hot_emission = emissions_data[map_pollutant]['total']
-        emission_osm_id = [int(x) for x in data_link_np[:, 0]]
-        
-        map_data_list = []
-        
-        # Iterate over all parsed road segments
-        for refs, osmid in zip(highway_coordinate, highway_osmid):
-            try:
-                # Find the corresponding emission value for this segment
-                i = emission_osm_id.index(osmid)
-                current_emission = hot_emission[i]
-            except ValueError:
-                # If no emission data, skip this segment for coloring/drawing
-                continue
-            
-            # Append coordinates and the emission value for each point in the road segment
-            for lon, lat in refs:
-                map_data_list.append({
-                    'Longitude': lon, 
-                    'Latitude': lat, 
-                    'Emission_Value': current_emission,
-                    'OSM_ID': osmid,
-                })
-            
-            # Add a break point (None) between road segments. This is CRITICAL for Plotly to draw them as separate lines.
-            map_data_list.append({'Longitude': None, 'Latitude': None, 'Emission_Value': None, 'OSM_ID': None})
+            import traceback
+            with st.expander("🐛 Debug Information"):
+                st.code(f"Error at potential line 1086: {traceback.format_exc()}")
+            # Flag to prevent proceeding
+            parsing_successful = False
 
-        map_df_lines = pd.DataFrame(map_data_list).dropna(subset=['Emission_Value'])
-        
-        # If map_df_lines is empty, it means no emission data matched the OSM file
-        if map_df_lines.empty:
-            st.warning("No emission data found matching the provided road network geometry.")
-            return
+        # --- Check if parsing was successful before continuing ---
+        if parsing_successful:
+            
+            # --- 2. Data Preparation for Plotly Lines ---
+            
+            # Extract the emission value array and the road IDs from the calculated data
+            hot_emission = emissions_data[map_pollutant]['total']
+            emission_osm_id = [int(x) for x in data_link_np[:, 0]]
+            
+            map_data_list = []
+            
+            # Iterate over all parsed road segments
+            for refs, osmid in zip(highway_coordinate, highway_osmid):
+                try:
+                    # Find the corresponding emission value for this segment
+                    i = emission_osm_id.index(osmid)
+                    current_emission = hot_emission[i]
+                except ValueError:
+                    # If no emission data, skip this segment for coloring/drawing
+                    continue
+                
+                # Append coordinates and the emission value for each point in the road segment
+                for lon, lat in refs:
+                    map_data_list.append({
+                        'Longitude': lon, 
+                        'Latitude': lat, 
+                        'Emission_Value': current_emission,
+                        'OSM_ID': osmid,
+                    })
+                
+                # Add a break point (None) between road segments. This is CRITICAL for Plotly to draw them as separate lines.
+                map_data_list.append({'Longitude': None, 'Latitude': None, 'Emission_Value': None, 'OSM_ID': None})
 
-        # Calculate max and min for color scale
-        max_emission = map_df_lines['Emission_Value'].max()
-        min_emission = map_df_lines['Emission_Value'].min()
-        
-        # --- 3. Plotly Visualization (Road Network Lines) ---
-        st.subheader(f"Total {map_pollutant} Emission Road Map")
-        st.caption("Visualization of road network colored by emission value.")
-        
-        # Create a Plotly Scattergeo trace using mode='lines'
-        fig_map = go.Figure(data=go.Scattergeo(
-            lon=map_df_lines['Longitude'],
-            lat=map_df_lines['Latitude'],
-            text=map_df_lines.apply(
-                # Use the last valid emission value for the hover text
-                lambda row: f"Link ID: {int(row['OSM_ID'])}<br>Emission: {row['Emission_Value']:.2f} {st.session_state.pollutants_available[map_pollutant]['unit']}", 
-                axis=1
-            ),
-            mode='lines', # <-- Draws the road network lines
-            line=dict(
-                width=2, # Base line width
-                # Use a colorscale based on the Emission_Value column
-                color=map_df_lines['Emission_Value'], 
-                colorscale=px.colors.sequential.Viridis,
-                cmax=max_emission,
-                cmin=min_emission,
-                colorbar=dict(title=f"Total {map_pollutant} ({st.session_state.pollutants_available[map_pollutant]['unit']})")
+            map_df_lines = pd.DataFrame(map_data_list).dropna(subset=['Emission_Value'])
+            
+            # If map_df_lines is empty, it means no emission data matched the OSM file
+            if map_df_lines.empty:
+                st.warning("No emission data found matching the provided road network geometry.")
+                # We can return here because we are in a top-level execution path that has failed its data dependency.
+                return
+
+            # Calculate max and min for color scale
+            max_emission = map_df_lines['Emission_Value'].max()
+            min_emission = map_df_lines['Emission_Value'].min()
+            
+            # --- 3. Plotly Visualization (Road Network Lines) ---
+            st.subheader(f"Total {map_pollutant} Emission Road Map")
+            st.caption("Visualization of road network colored by emission value.")
+            
+            # Create a Plotly Scattergeo trace using mode='lines'
+            fig_map = go.Figure(data=go.Scattergeo(
+                lon=map_df_lines['Longitude'],
+                lat=map_df_lines['Latitude'],
+                text=map_df_lines.apply(
+                    # Use the last valid emission value for the hover text
+                    lambda row: f"Link ID: {int(row['OSM_ID'])}<br>Emission: {row['Emission_Value']:.2f} {st.session_state.pollutants_available[map_pollutant]['unit']}", 
+                    axis=1
+                ),
+                mode='lines', # <-- Draws the road network lines
+                line=dict(
+                    width=2, # Base line width
+                    # Use a colorscale based on the Emission_Value column
+                    color=map_df_lines['Emission_Value'], 
+                    colorscale=px.colors.sequential.Viridis,
+                    cmax=max_emission,
+                    cmin=min_emission,
+                    colorbar=dict(title=f"Total {map_pollutant} ({st.session_state.pollutants_available[map_pollutant]['unit']})")
+                )
+            ))
+
+            # Update layout to focus on the selected area
+            fig_map.update_layout(
+                geo=dict(
+                    scope='world', # Use 'europe' or 'asia' if region specific, but 'world' is general
+                    showland=True,
+                    landcolor='rgb(217, 217, 217)',
+                    subunitcolor='rgb(255, 255, 255)',
+                    countrycolor='rgb(255, 255, 255)',
+                    showlakes=True,
+                    lakecolor='rgb(255, 255, 255)',
+                    showsubunits=True,
+                    showcountries=True,
+                    # Set map boundaries using the max/min coords
+                    lonaxis=dict(range=[x_min - tolerance, x_max + tolerance]),
+                    lataxis=dict(range=[y_min - tolerance, y_max + tolerance]),
+                ),
+                title_text=f"Geographical Distribution of {map_pollutant} Emissions",
+                margin={"r":0,"t":50,"l":0,"b":0}
             )
-        ))
-
-        # Update layout to focus on the selected area
-        fig_map.update_layout(
-            geo=dict(
-                scope='world', # Use 'europe' or 'asia' if region specific, but 'world' is general
-                showland=True,
-                landcolor='rgb(217, 217, 217)',
-                subunitcolor='rgb(255, 255, 255)',
-                countrycolor='rgb(255, 255, 255)',
-                showlakes=True,
-                lakecolor='rgb(255, 255, 255)',
-                showsubunits=True,
-                showcountries=True,
-                # Set map boundaries using the max/min coords
-                lonaxis=dict(range=[x_min - tolerance, x_max + tolerance]),
-                lataxis=dict(range=[y_min - tolerance, y_max + tolerance]),
-            ),
-            title_text=f"Geographical Distribution of {map_pollutant} Emissions",
-            margin={"r":0,"t":50,"l":0,"b":0}
-        )
-        st.plotly_chart(fig_map, use_container_width=True)
+            st.plotly_chart(fig_map, use_container_width=True)
         
     elif osm_file is None:
         st.info("Please upload the OSM network file first.")
@@ -1319,6 +1332,7 @@ st.markdown("""
     <p>© 2024 - Developed with Gemini</p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
