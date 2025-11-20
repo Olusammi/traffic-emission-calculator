@@ -540,6 +540,7 @@ PM_per_km = 1 mg/km
     """)
 
 # ==================== TAB 4: CALCULATE EMISSIONS ====================
+# ==================== TAB 4: CALCULATE EMISSIONS ====================
 with tab4:
     st.header("⚙️ Calculate Emissions")
 
@@ -621,7 +622,6 @@ with tab4:
 
                         # --- End Link Data Handling ---
 
-
                         # Load PC and Moto distribution files (these MUST be uploaded)
                         data_engine_capacity_gasoline = np.loadtxt(engine_cap_gas)
                         data_engine_capacity_diesel = np.loadtxt(engine_cap_diesel)
@@ -645,6 +645,111 @@ with tab4:
                         
                         # Set 100% of the fleet for each link to Euro VI (index 5) and HDV Type 0 (Rigid Truck < 7.5t, index 0)
                         data_hdv_reshaped[:, 5, 0] = 1.0 
+                        
+                        # --- End New Defaults ---
+
+                        # ====================================================================
+                        # 🔍 PARAMETER VERIFICATION SECTION - PUT THIS RIGHT HERE
+                        # ====================================================================
+                        st.subheader("🔍 Parameter Verification")
+                        col1, col2, col3 = st.columns(3)
+
+                        with col1:
+                            st.write("**Motorcycle Distribution Ranges:**")
+                            st.write(f"2-stroke: {data_copert_class_motorcycle_two_stroke.min():.3f} to {data_copert_class_motorcycle_two_stroke.max():.3f}")
+                            st.write(f"4-stroke: {data_copert_class_motorcycle_four_stroke.min():.3f} to {data_copert_class_motorcycle_four_stroke.max():.3f}")
+
+                        with col2:
+                            st.write("**Link Data Ranges:**")
+                            st.write(f"PC Proportion: {data_link[:, 5].min():.3f} to {data_link[:, 5].max():.3f}")
+                            st.write(f"Motorcycle Flow: {(1 - data_link[:, 5]).min():.3f} to {(1 - data_link[:, 5]).max():.3f}")
+                            st.write(f"LDV Proportion: {P_ldv.min():.3f} to {P_ldv.max():.3f}")
+                            st.write(f"HDV Proportion: {P_hdv.min():.3f} to {P_hdv.max():.3f}")
+
+                        with col3:
+                            st.write("**Calculation Parameters:**")
+                            st.write(f"Speed Range: {data_link[:, 3].min():.1f} to {data_link[:, 3].max():.1f} km/h")
+                            st.write(f"Flow Range: {data_link[:, 2].min():.1f} to {data_link[:, 2].max():.1f} vehicles")
+                            st.write(f"Link Length Range: {data_link[:, 1].min():.3f} to {data_link[:, 1].max():.3f} km")
+
+                        # MOTORCYCLE CALCULATION TEST
+                        st.subheader("🧪 Motorcycle Calculation Test")
+                        test_speed = 50.0
+                        test_pollutant = cop.pollutant_CO
+                        test_engine_type = cop.engine_type_moto_four_stroke_50_250
+                        test_copert_class = cop.class_moto_Euro_3
+
+                        try:
+                            test_result = cop.EFMotorcycle(test_pollutant, test_speed, test_engine_type, test_copert_class)
+                            st.write(f"Test Calculation - CO at 50 km/h, 4-stroke Euro 3: {test_result:.6f} g/km")
+                            
+                            if test_result == 0:
+                                st.error("❌ Motorcycle test calculation returned 0 - there may be parameter issues")
+                            else:
+                                st.success("✅ Motorcycle test calculation successful!")
+                                
+                        except Exception as test_error:
+                            st.error(f"❌ Motorcycle test calculation failed: {test_error}")
+
+                        # ====================================================================
+                        # END PARAMETER VERIFICATION SECTION
+                        # ====================================================================
+
+                        # Setup classes and types
+                        engine_type = [cop.engine_type_gasoline, cop.engine_type_diesel]
+                        engine_type_m = [cop.engine_type_moto_two_stroke_more_50,
+                                         cop.engine_type_moto_four_stroke_50_250]
+                        engine_capacity = [cop.engine_capacity_0p8_to_1p4, cop.engine_capacity_1p4_to_2]
+                        copert_class = [cop.class_PRE_ECE, cop.class_ECE_15_00_or_01, cop.class_ECE_15_02,
+                                        cop.class_ECE_15_03,
+                                        cop.class_ECE_15_04, cop.class_Improved_Conventional, cop.class_Open_loop,
+                                        cop.class_Euro_1,
+                                        cop.class_Euro_2, cop.class_Euro_3, cop.class_Euro_4, cop.class_Euro_5,
+                                        cop.class_Euro_6, cop.class_Euro_6c]
+                        Nclass = len(copert_class)
+                        copert_class_motorcycle = [cop.class_moto_Conventional, cop.class_moto_Euro_1,
+                                                   cop.class_moto_Euro_2,
+                                                   cop.class_moto_Euro_3, cop.class_moto_Euro_4, cop.class_moto_Euro_5]
+                        Mclass = len(copert_class_motorcycle)
+
+                        # HDV Emission Classes (for use in calculation loop)
+                        HDV_Emission_Classes = [
+                            cop.class_hdv_Euro_I,
+                            cop.class_hdv_Euro_II,
+                            cop.class_hdv_Euro_III,
+                            cop.class_hdv_Euro_IV,
+                            cop.class_hdv_Euro_V,
+                            cop.class_hdv_Euro_VI
+                        ]
+
+                        # Initialize emission arrays for each selected pollutant
+                        emissions_data = {}
+                        pollutant_mapping = {
+                            "CO": cop.pollutant_CO,
+                            "CO2": cop.pollutant_FC,  # Will convert FC to CO2
+                            "NOx": cop.pollutant_NOx,
+                            "PM": cop.pollutant_PM,
+                            "VOC": cop.pollutant_VOC,
+                            "FC": cop.pollutant_FC
+                        }
+
+                        # Initialize with LDV and HDV arrays
+                        for poll in selected_pollutants:
+                            emissions_data[poll] = {
+                                'pc': np.zeros((Nlink,), dtype=float),
+                                'moto': np.zeros((Nlink,), dtype=float),
+                                'ldv': np.zeros((Nlink,), dtype=float), 
+                                'hdv': np.zeros((Nlink,), dtype=float), 
+                                'total': np.zeros((Nlink,), dtype=float)
+                            }
+                        
+                        # Progress tracking
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+
+                        # Calculate emissions for each link
+                        for i in range(Nlink):
+                            # ... rest of your existing calculation code ... 
                         
                         # --- End New Defaults ---
 
@@ -1560,6 +1665,7 @@ st.markdown("""
     <p>© 2025 - Developed with Gemini</p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
