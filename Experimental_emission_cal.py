@@ -755,8 +755,8 @@ with tab4:
 
 
                         # Setup classes and types
-                        engine_type = [cop.engine_type_gasoline, cop.engine_type_diesel]
-                        engine_type_m = [cop.engine_type_moto_two_stroke_more_50,
+                            engine_type = [cop.engine_type_gasoline, cop.engine_type_diesel]
+                            engine_type_m = [cop.engine_type_moto_two_stroke_more_50,
                                          cop.engine_type_moto_four_stroke_50_250]
                         engine_capacity = [cop.engine_capacity_0p8_to_1p4, cop.engine_capacity_1p4_to_2]
                         copert_class = [cop.class_PRE_ECE, cop.class_ECE_15_00_or_01, cop.class_ECE_15_02,
@@ -1665,6 +1665,7 @@ st.markdown("""
     <p>© 2025 - Developed with Gemini</p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
