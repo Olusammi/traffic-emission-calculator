@@ -925,14 +925,3 @@ def EFMotorcycle(self, pollutant, speed, engine_type, copert_class_motorcycle, *
             
     except Exception as e:
         return 0.0
-
-"""Motorcycles emission computing for motorcycle only"""
-def Emission_M(self, pollutant, speed, distance, engine_type, copert_class_motorcycle, **kwargs):
-    if engine_type == self.engine_type_moto_two_stroke_more_50:
-        return distance \
-            * self.EFMotorcycle(pollutant, speed, engine_type, copert_class_motorcycle, **kwargs)
-    elif engine_type == self.engine_type_moto_four_stroke_50_250:
-        return distance \
-            * self.EFMotorcycle(pollutant, speed, engine_type, copert_class_motorcycle, **kwargs)
-    else:
-        return 0.0
