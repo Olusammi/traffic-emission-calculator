@@ -744,20 +744,6 @@ NAN     NAN      NAN        NAN        NAN
         else:
             return 0.0
 
-    """Motorcycles emission computing for motorcycle only"""
-
-    def Emission_M(self, pollutant, speed, distance, engine_type, copert_class_motorcycle, **kwargs):
-            if engine_type == self.engine_type_moto_two_stroke_more_50:
-                return distance \
-                    * self.EFMotorcycle(self, pollutant, speed, engine_type, copert_class_motorcycle,
-                     **kwargs)
-            elif engine_type == self.engine_type_moto_four_stroke_50_250:
-                return distance \
-                    * self.EFMotorcycle(self, pollutant, speed, engine_type, copert_class_motorcycle,
-                     **kwargs)
-            else:
-                return 0.0
-
     # Definition of Hot Emission Factor (HEF) for gasoline passenger cars.
     def HEFGasolinePassengerCar(self, pollutant, speed, copert_class,
                                 engine_capacity, **kwargs):
@@ -868,60 +854,71 @@ NAN     NAN      NAN        NAN        NAN
             else:
                 return base_factor
 
-    # Definition of Emission Factor (EF) for motorcycles of engine displacement
-# over 50 cm3. A=alpha B=beta,..H=eta R =reduction factor
-# CORRECTED: Remove the first 'self' parameter
-def EFMotorcycle(self, pollutant, speed, engine_type, copert_class_motorcycle, **kwargs):
-    try:
-        V = speed 
-        
-        # Validate inputs
-        if V <= 0:
-            return 0.0
-            
-        # Check if this copert class is valid for motorcycles
-        valid_classes = [self.class_moto_Conventional, self.class_moto_Euro_1, 
-                        self.class_moto_Euro_2, self.class_moto_Euro_3, 
-                        self.class_moto_Euro_4, self.class_moto_Euro_5]
-        
-        if copert_class_motorcycle not in valid_classes:
-            return 0.0
-
-        i_engine_type = self.index_moto_engine_type.get(engine_type, -1)
-        if i_engine_type == -1:
-            return 0.0
-
-        i_pollutant = self.index_pollutant.get(pollutant, -1)
-        if i_pollutant == -1:
-            return 0.0
-
-        i_copert_class_motorcycle = self.index_copert_class_motorcycle.get(copert_class_motorcycle, -1)
-        if i_copert_class_motorcycle == -1:
-            return 0.0
-
-        # Get parameters with safety checks
+    # CORRECTED EFMotorcycle method - properly defined
+    def EFMotorcycle(self, pollutant, speed, engine_type, copert_class_motorcycle, **kwargs):
+        """Computes the emission factor for motorcycles in g/km."""
         try:
-            params = self.motorcycle_parameter[i_engine_type, i_pollutant, i_copert_class_motorcycle]
+            V = speed 
             
-            # Check for NaN parameters
-            if numpy.any(numpy.isnan(params)):
+            # Validate inputs
+            if V <= 0:
                 return 0.0
                 
-            Vmin, Vmax, A, B, G, D, E, Z, H, R = params
+            # Check if this copert class is valid for motorcycles
+            valid_classes = [self.class_moto_Conventional, self.class_moto_Euro_1, 
+                            self.class_moto_Euro_2, self.class_moto_Euro_3, 
+                            self.class_moto_Euro_4, self.class_moto_Euro_5]
             
-            # Validate speed range
-            if V < Vmin or V > Vmax:
-                # Use closest boundary instead of throwing error
-                V = max(Vmin, min(V, Vmax))
-            
-            # Calculate emission factor using Eq_56
-            result = self.Eq_56(A, B, G, D, E, Z, H, R, V)
-            
-            # Ensure non-negative result
-            return max(0.0, result)
-            
-        except (IndexError, ValueError) as e:
+            if copert_class_motorcycle not in valid_classes:
+                return 0.0
+
+            i_engine_type = self.index_moto_engine_type.get(engine_type, -1)
+            if i_engine_type == -1:
+                return 0.0
+
+            i_pollutant = self.index_pollutant.get(pollutant, -1)
+            if i_pollutant == -1:
+                return 0.0
+
+            i_copert_class_motorcycle = self.index_copert_class_motorcycle.get(copert_class_motorcycle, -1)
+            if i_copert_class_motorcycle == -1:
+                return 0.0
+
+            # Get parameters with safety checks
+            try:
+                params = self.motorcycle_parameter[i_engine_type, i_pollutant, i_copert_class_motorcycle]
+                
+                # Check for NaN parameters
+                if numpy.any(numpy.isnan(params)):
+                    return 0.0
+                    
+                Vmin, Vmax, A, B, G, D, E, Z, H, R = params
+                
+                # Validate speed range
+                if V < Vmin or V > Vmax:
+                    # Use closest boundary instead of throwing error
+                    V = max(Vmin, min(V, Vmax))
+                
+                # Calculate emission factor using Eq_56
+                result = self.Eq_56(A, B, G, D, E, Z, H, R, V)
+                
+                # Ensure non-negative result
+                return max(0.0, result)
+                
+            except (IndexError, ValueError) as e:
+                return 0.0
+                
+        except Exception as e:
             return 0.0
-            
-    except Exception as e:
-        return 0.0
+
+    # Motorcycle emission calculation method
+    def Emission_M(self, pollutant, speed, distance, engine_type, copert_class_motorcycle, **kwargs):
+        """Computes emissions for motorcycles."""
+        if engine_type == self.engine_type_moto_two_stroke_more_50:
+            return distance \
+                * self.EFMotorcycle(pollutant, speed, engine_type, copert_class_motorcycle, **kwargs)
+        elif engine_type == self.engine_type_moto_four_stroke_50_250:
+            return distance \
+                * self.EFMotorcycle(pollutant, speed, engine_type, copert_class_motorcycle, **kwargs)
+        else:
+            return 0.0
