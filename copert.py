@@ -870,6 +870,7 @@ NAN     NAN      NAN        NAN        NAN
 
     # Definition of Emission Factor (EF) for motorcycles of engine displacement
 # over 50 cm3. A=alpha B=beta,..H=eta R =reduction factor
+# CORRECTED: Remove the first 'self' parameter
 def EFMotorcycle(self, pollutant, speed, engine_type, copert_class_motorcycle, **kwargs):
     V = speed 
     if copert_class_motorcycle in [self.class_moto_Conventional,
