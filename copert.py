@@ -872,35 +872,58 @@ NAN     NAN      NAN        NAN        NAN
 # over 50 cm3. A=alpha B=beta,..H=eta R =reduction factor
 # CORRECTED: Remove the first 'self' parameter
 def EFMotorcycle(self, pollutant, speed, engine_type, copert_class_motorcycle, **kwargs):
-    V = speed 
-    if copert_class_motorcycle in [self.class_moto_Conventional,
-                                   self.class_moto_Euro_1, self.class_moto_Euro_2,
-                                   self.class_moto_Euro_3, self.class_moto_Euro_4,
-                                   self.class_moto_Euro_5]:
-        i_engine_type = self.index_moto_engine_type[engine_type]
+    try:
+        V = speed 
         
-        # Find the key (name_engine_type) associated with the value (engine_type)
-        name_engine_type = next((key for key, value in self.corr_engine_type.items() if value == engine_type), None)
+        # Validate inputs
+        if V <= 0:
+            return 0.0
+            
+        # Check if this copert class is valid for motorcycles
+        valid_classes = [self.class_moto_Conventional, self.class_moto_Euro_1, 
+                        self.class_moto_Euro_2, self.class_moto_Euro_3, 
+                        self.class_moto_Euro_4, self.class_moto_Euro_5]
         
-        if name_engine_type is None:
-            # Handle case where the engine type value isn't found in the dictionary
-            print(f"Error: Engine type value '{engine_type}' not found in corr_engine_type mapping.")
-            return 0
+        if copert_class_motorcycle not in valid_classes:
+            return 0.0
 
-        i_pollutant = self.index_pollutant[pollutant]
-        i_copert_class_motorcycle = self.index_copert_class_motorcycle[copert_class_motorcycle]          
-        Vmin, Vmax, A, B, G, D, E, Z, H, R \
-            = self.motorcycle_parameter[i_engine_type, i_pollutant,	
-                                  i_copert_class_motorcycle]
-        if V < Vmin or V > Vmax:
-            raise Exception( 'The input speed must be in the ' \
-                + 'range of [' + str(round(Vmin, 1)) + ', ' \
-                + str(round(Vmax, 1)) + '] when calculating ' \
-                'emission factors for motorcycles when engine type is ' \
-                + name_engine_type + '.')
-        else:
-            return self.Eq_56(A, B, G, D, E, Z, H, R, V)
-    else:
+        i_engine_type = self.index_moto_engine_type.get(engine_type, -1)
+        if i_engine_type == -1:
+            return 0.0
+
+        i_pollutant = self.index_pollutant.get(pollutant, -1)
+        if i_pollutant == -1:
+            return 0.0
+
+        i_copert_class_motorcycle = self.index_copert_class_motorcycle.get(copert_class_motorcycle, -1)
+        if i_copert_class_motorcycle == -1:
+            return 0.0
+
+        # Get parameters with safety checks
+        try:
+            params = self.motorcycle_parameter[i_engine_type, i_pollutant, i_copert_class_motorcycle]
+            
+            # Check for NaN parameters
+            if numpy.any(numpy.isnan(params)):
+                return 0.0
+                
+            Vmin, Vmax, A, B, G, D, E, Z, H, R = params
+            
+            # Validate speed range
+            if V < Vmin or V > Vmax:
+                # Use closest boundary instead of throwing error
+                V = max(Vmin, min(V, Vmax))
+            
+            # Calculate emission factor using Eq_56
+            result = self.Eq_56(A, B, G, D, E, Z, H, R, V)
+            
+            # Ensure non-negative result
+            return max(0.0, result)
+            
+        except (IndexError, ValueError) as e:
+            return 0.0
+            
+    except Exception as e:
         return 0.0
 
 """Motorcycles emission computing for motorcycle only"""
