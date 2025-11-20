@@ -868,19 +868,19 @@ with tab4:
                                     continue
                                 try:
                                 # CORRECTED: Remove the 'self' parameter from EFMotorcycle call
-                                e_f = cop.EFMotorcycle(poll_type, v, engine_type_m[m], copert_class_motorcycle[d])
-                                e_f *= engine_type_motorcycle_distribution[m]
+                                    e_f = cop.EFMotorcycle(poll_type, v, engine_type_m[m], copert_class_motorcycle[d])
+                                    e_f *= engine_type_motorcycle_distribution[m]
             
-                                # Apply corrections for motorcycles if needed
-                                if poll_name == "NOx" and include_temperature_correction:
-                                    temp_factor = 1 + 0.02 * (ambient_temp - 20)
-                                    e_f *= temp_factor
+                                    # Apply corrections for motorcycles if needed
+                                    if poll_name == "NOx" and include_temperature_correction:
+                                        temp_factor = 1 + 0.02 * (ambient_temp - 20)
+                                        e_f *= temp_factor
                 
-                                emissions_data[poll_name]['moto'][i] += e_f * P_motorcycle * link_flow * link_length
-                            except Exception as moto_error:
-                                # Log motorcycle calculation error but continue
-                                if i == 0:  # Only show warning for first link to avoid spam
-                                    st.warning(f"Motorcycle calculation issue for {poll_name}: {moto_error}")
+                                    emissions_data[poll_name]['moto'][i] += e_f * P_motorcycle * link_flow * link_length
+                                except Exception as moto_error:
+                                    # Log motorcycle calculation error but continue
+                                    if i == 0:  # Only show warning for first link to avoid spam
+                                        st.warning(f"Motorcycle calculation issue for {poll_name}: {moto_error}")
                             
                             # Final Total Summation
                             for poll_name in selected_pollutants:
@@ -1560,6 +1560,7 @@ st.markdown("""
     <p>© 2025 - Developed with Gemini</p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
