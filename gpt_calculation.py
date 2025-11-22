@@ -969,7 +969,7 @@ with tab4:
                                     except Exception:
                                         pass
                         
-                                # -------- Motorcycle (inside pollutant loop) ------------
+                               # -------- Motorcycle (inside pollutant loop) ------------
                                 try:
                                     for m in range(2):
                                         for d in range(Mclass):
@@ -978,13 +978,12 @@ with tab4:
                                             try:
                                                 e_f = cop.EFMotorcycle(poll_type, v, engine_type_m[m], copert_class_motorcycle[d])
                                             except Exception:
-                                                # fallback - if signature/behavior differs, set 0 and continue
                                                 e_f = 0.0
                                             e_f *= engine_type_motorcycle_distribution[m]
-                                            # preserve your motorcycle scaling (note you used * link_flow * link_length)
-                                            emissions_data[poll_name]['moto'][i] += e_f * P_motorcycle * link_flow * link_length
+                                            emissions_data[poll_name]['moto'][i] += e_f * P_motorcycle * link_flow
                                 except Exception:
                                     pass
+
                         
                             # After computing all vehicle-type contributions for this link, compute totals per pollutant
                             for poll_name in selected_pollutants:
