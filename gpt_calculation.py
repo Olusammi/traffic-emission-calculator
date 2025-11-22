@@ -830,8 +830,9 @@ with tab4:
                         
                             engine_type_distribution = [link_gasoline_proportion, 1. - link_gasoline_proportion]
                             engine_capacity_distribution = [data_engine_capacity_gasoline[i], data_engine_capacity_diesel[i]]
-                            engine_type_motorcycle_distribution = [data_copert_class_motorcycle_two_stroke[i],
-                                                                   data_copert_class_motorcycle_four_stroke[i]]
+                            # Replace whatever you currently set here with this correct stroke-based distribution:
+                            engine_type_motorcycle_distribution = [link_4_stroke_proportion, 1.0 - link_4_stroke_proportion]
+
                         
                             # For convenience: ensure ldv copert class array exists
                             # data_copert_class_ldv is expected to be (Nlink, Nclass)
@@ -973,16 +974,25 @@ with tab4:
                                 try:
                                     for m in range(2):
                                         for d in range(Mclass):
+                                            # preserve your skip condition for certain euro classes
                                             if m == 1 and copert_class_motorcycle[d] in range(cop.class_moto_Conventional, 1 + cop.class_moto_Euro_5):
                                                 continue
                                             try:
+                                                # Use poll_type (current pollutant) here, not a fixed pollutant
                                                 e_f = cop.EFMotorcycle(poll_type, v, engine_type_m[m], copert_class_motorcycle[d])
                                             except Exception:
+                                                # fallback: set to 0 and continue
                                                 e_f = 0.0
+                                
+                                            # apply stroke distribution (2S/4S)
                                             e_f *= engine_type_motorcycle_distribution[m]
+                                
+                                            # ORIGINAL SCALING used in your working script — do NOT multiply by link_length
                                             emissions_data[poll_name]['moto'][i] += e_f * P_motorcycle * link_flow
                                 except Exception:
+                                    # keep the app running even if motorcycle EF call fails for one pollutant/link
                                     pass
+
 
                         
                             # After computing all vehicle-type contributions for this link, compute totals per pollutant
