@@ -1812,7 +1812,7 @@ with tab7:
                 final_results_df[f'{poll}_Diesel'] = fuel_emissions[poll]['diesel']
 
                     # 2. Statistics Summary CSV
-                    summary_data = []
+                        summary_data = []
                     for poll in selected_pollutants:
                         summary_data.append({
                             'Pollutant': poll,
