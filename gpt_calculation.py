@@ -1749,6 +1749,7 @@ with tab6:
         st.info("Please calculate emissions first in the 'Calculate Emissions' tab.")
 
 # ==================== TAB 7: DOWNLOAD RESULTS ====================
+# ==================== TAB 7: DOWNLOAD RESULTS ====================
 with tab7:
     st.header("📥 Download Results")
     st.markdown("Download calculated data and reports.")
@@ -1798,37 +1799,56 @@ with tab7:
 
         # ZIP file containing all calculated data and reports
         st.subheader("Complete Analysis Package (ZIP)")
-        if st.button("Generate & Download ZIP Report", use_container_width=True):
-            with BytesIO() as buffer:
-                with zipfile.ZipFile(buffer, 'w') as zipf:
-                    # 1. Full Results CSV
-                    zipf.writestr('full_link_results.csv', final_results_df.to_csv(index=False))
-                    
-        # In TAB 7, after creating final_results_df, ADD:
-
-        if 'fuel_emissions_data' in st.session_state:
-            fuel_emissions = st.session_state.fuel_emissions_data
+        
+        # IMPORTANT: Create summary_df BEFORE the button, but store it in session state
+        # This ensures it's available when the button is clicked
+        if 'summary_df_for_download' not in st.session_state or st.session_state.get('recalculate_summary', True):
+            summary_data = []
             for poll in selected_pollutants:
-                final_results_df[f'{poll}_Gasoline'] = fuel_emissions[poll]['gasoline']
-                final_results_df[f'{poll}_Diesel'] = fuel_emissions[poll]['diesel']
+                summary_data.append({
+                    'Pollutant': poll,
+                    'Total PC': f"{emissions_data[poll]['pc'].sum():.2f}",
+                    'Total LDV': f"{emissions_data[poll]['ldv'].sum():.2f}",
+                    'Total HDV': f"{emissions_data[poll]['hdv'].sum():.2f}",
+                    'Total Moto': f"{emissions_data[poll]['moto'].sum():.2f}",
+                    'Grand Total': f"{emissions_data[poll]['total'].sum():.2f}",
+                    'Unit': pollutants_available[poll]['unit']
+                })
+            st.session_state.summary_df_for_download = pd.DataFrame(summary_data)
+            st.session_state.recalculate_summary = False
+        
+        # Now use the stored summary_df
+        summary_df = st.session_state.summary_df_for_download
+        
+        if st.button("Generate & Download ZIP Report", use_container_width=True):
+            with st.spinner("Generating ZIP archive..."):
+                with BytesIO() as buffer:
+                    with zipfile.ZipFile(buffer, 'w') as zipf:
+                        # 1. Full Results CSV
+                        zipf.writestr('full_link_results.csv', final_results_df.to_csv(index=False))
 
-                    # 2. Statistics Summary CSV
-                summary_data = []
-                for poll in selected_pollutants:
-                    summary_data.append({
-                        'Pollutant': poll,
-                        'Total PC': emissions_data[poll]['pc'].sum(),
-                        'Total LDV': emissions_data[poll]['ldv'].sum(),
-                        'Total HDV': emissions_data[poll]['hdv'].sum(),
-                        'Total Moto': emissions_data[poll]['moto'].sum(),
-                        'Grand Total': emissions_data[poll]['total'].sum(),
-                        'Unit': pollutants_available[poll]['unit']
-                    })
-                summary_df = pd.DataFrame(summary_data)
-                zipf.writestr('statistics_summary.csv', summary_df.to_csv(index=False))
+                        # 2. Statistics Summary CSV
+                        zipf.writestr('statistics_summary.csv', summary_df.to_csv(index=False))
 
-                    # 3. Text Report
-                report_text = f"""
+                        # 3. Fuel Type Breakdown (if available)
+                        if 'fuel_emissions_data' in st.session_state:
+                            fuel_emissions = st.session_state.fuel_emissions_data
+                            fuel_breakdown_data = []
+                            for poll in selected_pollutants:
+                                fuel_breakdown_data.append({
+                                    'Pollutant': poll,
+                                    'Gasoline_Total': f"{fuel_emissions[poll]['gasoline'].sum():.2f}",
+                                    'Diesel_Total': f"{fuel_emissions[poll]['diesel'].sum():.2f}",
+                                    'Unit': pollutants_available[poll]['unit']
+                                })
+                            fuel_df = pd.DataFrame(fuel_breakdown_data)
+                            zipf.writestr('fuel_type_breakdown.csv', fuel_df.to_csv(index=False))
+
+                        # 4. Text Report
+                        gasoline_avg = data_link_np[:, 4].mean()
+                        diesel_avg = 1 - gasoline_avg
+                        
+                        report_text = f"""
 Traffic Emission Calculation Report
 Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
 
@@ -1840,6 +1860,10 @@ Trip Length (Cold Start): {trip_length} km
 --- Summary Statistics ---
 {summary_df.to_string(index=False)}
 
+--- Fuel Type Distribution ---
+Average Gasoline Proportion: {gasoline_avg*100:.1f}%
+Average Diesel Proportion: {diesel_avg*100:.1f}%
+
 --- Note on LDV/HDV Distribution ---
 This calculation used a simplified fleet distribution for Light Duty Vehicles (LDV) and Heavy Duty Vehicles (HDV) as no specific files were uploaded.
 LDV Fleet Composition: Defaulted to the uploaded Passenger Car (Gasoline) Euro Class Distribution.
@@ -1850,26 +1874,31 @@ Link Data File Columns: {data_link_np.shape[1]}
 If 7 columns, LDV/HDV flow proportions were assumed zero.
 If 9 columns, LDV/HDV flow proportions were read from columns 8 and 9.
 
---- Fuel Type Distribution ---
-Average Gasoline Proportion: {data_link_np[:, 4].mean()*100:.1f}%
-Average Diesel Proportion: {(1 - data_link_np[:, 4].mean())*100:.1f}%
+--- Data Preview (First 10 Rows of Full Results) ---
+{final_results_df.head(10).to_string()}
 
---- Data Preview (First 5 Rows of Full Results) ---
-{final_results_df.head().to_string()}
+--- Top 5 Emitting Links ---
 """
-            zipf.writestr('detailed_report.txt', report_text)
-            
-            st.success("ZIP report generated!")
+                        # Add top 5 links for each pollutant
+                        for poll in selected_pollutants:
+                            temp_df = final_results_df.copy()
+                            temp_df['Total_Emission'] = emissions_data[poll]['total']
+                            top_5 = temp_df.nlargest(5, 'Total_Emission')[['OSM_ID', 'Total_Emission']]
+                            report_text += f"\n{poll} Top 5 Links:\n{top_5.to_string(index=False)}\n"
 
-        buffer.seek(0)
-        st.download_button(
-            label="Download ZIP Report",
-            data=buffer,
-            file_name="traffic_emission_analysis.zip",
-            mime="application/zip",
-            key='download_zip',
-            use_container_width=True
-        )
+                        zipf.writestr('detailed_report.txt', report_text)
+                        
+                    st.success("✅ ZIP report generated successfully!")
+
+                    buffer.seek(0)
+                    st.download_button(
+                        label="📦 Download ZIP Report",
+                        data=buffer,
+                        file_name="traffic_emission_analysis.zip",
+                        mime="application/zip",
+                        key='download_zip',
+                        use_container_width=True
+                    )
         
         st.markdown("---")
         st.markdown("### 📚 Export Formats")
@@ -1885,6 +1914,9 @@ Average Diesel Proportion: {(1 - data_link_np[:, 4].mean())*100:.1f}%
         - HDV: Heavy Duty Vehicles
         - Moto: Motorcycles
         - Total: Sum of all vehicle types
+        
+        **Fuel Type Data:**
+        If fuel tracking is enabled, ZIP includes gasoline/diesel breakdown
         """)
     else:
         st.info("Calculate emissions first to create download package")
