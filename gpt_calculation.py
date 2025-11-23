@@ -1827,44 +1827,44 @@ with tab7:
                 zipf.writestr('statistics_summary.csv', summary_df.to_csv(index=False))
 
                     # 3. Text Report
-                    report_text = f"""
-                    Traffic Emission Calculation Report
-                    Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
-                    
-                    Selected Pollutants: {', '.join(selected_pollutants)}
-                    Methodology: {calculation_method}
-                    Ambient Temperature: {ambient_temp}°C
-                    Trip Length (Cold Start): {trip_length} km
-                    
-                    --- Summary Statistics ---
-                    {summary_df.to_string(index=False)}
-                    
-                    --- Note on LDV/HDV Distribution ---
-                    This calculation used a simplified fleet distribution for Light Duty Vehicles (LDV) and Heavy Duty Vehicles (HDV) as no specific files were uploaded.
-                    LDV Fleet Composition: Defaulted to the uploaded Passenger Car (Gasoline) Euro Class Distribution.
-                    HDV Fleet Composition: Defaulted to 100% Euro VI standard and Rigid Truck < 7.5t type.
-                    
-                    --- Link Data Column Count ---
-                    Link Data File Columns: {data_link_np.shape[1]}
-                    If 7 columns, LDV/HDV flow proportions were assumed zero.
-                    If 9 columns, LDV/HDV flow proportions were read from columns 8 and 9.
-                    
-                    --- Data Preview (First 5 Rows of Full Results) ---
-                    {final_results_df.head().to_string()}
-                    """
-                    zipf.writestr('detailed_report.txt', report_text)
-                    
-                    st.success("ZIP report generated!")
+                report_text = f"""
+                Traffic Emission Calculation Report
+                Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
+                
+                Selected Pollutants: {', '.join(selected_pollutants)}
+                Methodology: {calculation_method}
+                Ambient Temperature: {ambient_temp}°C
+                Trip Length (Cold Start): {trip_length} km
+                
+                --- Summary Statistics ---
+                {summary_df.to_string(index=False)}
+                
+                --- Note on LDV/HDV Distribution ---
+                This calculation used a simplified fleet distribution for Light Duty Vehicles (LDV) and Heavy Duty Vehicles (HDV) as no specific files were uploaded.
+                LDV Fleet Composition: Defaulted to the uploaded Passenger Car (Gasoline) Euro Class Distribution.
+                HDV Fleet Composition: Defaulted to 100% Euro VI standard and Rigid Truck < 7.5t type.
+                
+                --- Link Data Column Count ---
+                Link Data File Columns: {data_link_np.shape[1]}
+                If 7 columns, LDV/HDV flow proportions were assumed zero.
+                If 9 columns, LDV/HDV flow proportions were read from columns 8 and 9.
+                
+                --- Data Preview (First 5 Rows of Full Results) ---
+                {final_results_df.head().to_string()}
+                """
+                zipf.writestr('detailed_report.txt', report_text)
+                
+                st.success("ZIP report generated!")
 
-                buffer.seek(0)
-                st.download_button(
-                    label="Download ZIP Report",
-                    data=buffer,
-                    file_name="traffic_emission_analysis.zip",
-                    mime="application/zip",
-                    key='download_zip',
-                    use_container_width=True
-                )
+            buffer.seek(0)
+            st.download_button(
+                label="Download ZIP Report",
+                data=buffer,
+                file_name="traffic_emission_analysis.zip",
+                mime="application/zip",
+                key='download_zip',
+                use_container_width=True
+            )
         
         st.markdown("---")
         st.markdown("### 📚 Export Formats")
