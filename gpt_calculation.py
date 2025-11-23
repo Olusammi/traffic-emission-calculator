@@ -1803,6 +1803,8 @@ with tab7:
                 with zipfile.ZipFile(buffer, 'w') as zipf:
                     # 1. Full Results CSV
                     zipf.writestr('full_link_results.csv', final_results_df.to_csv(index=False))
+                    summary_df = pd.DataFrame(summary_data)
+                    zipf.writestr('statistics_summary.csv', summary_df.to_csv(index=False))
         # In TAB 7, after creating final_results_df, ADD:
 
         if 'fuel_emissions_data' in st.session_state:
@@ -1823,8 +1825,8 @@ with tab7:
                         'Grand Total': emissions_data[poll]['total'].sum(),
                         'Unit': pollutants_available[poll]['unit']
                     })
-                summary_df = pd.DataFrame(summary_data)
-                zipf.writestr('statistics_summary.csv', summary_df.to_csv(index=False))
+                #summary_df = pd.DataFrame(summary_data)
+                #zipf.writestr('statistics_summary.csv', summary_df.to_csv(index=False))
 
                     # 3. Text Report
                 report_text = f"""
