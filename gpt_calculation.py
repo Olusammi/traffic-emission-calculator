@@ -115,6 +115,87 @@ else:
 st.sidebar.markdown("---")
 st.sidebar.info("💡 **Pro Tip**: Enable all accuracy settings for research-grade calculations")
 
+# ==================== UNIT CONVERSION SETTINGS ====================
+st.sidebar.markdown("---")
+st.sidebar.header("📏 Unit Conversion")
+st.sidebar.markdown("Convert emission results to different units")
+
+# Unit conversion options for different pollutants
+unit_conversion_options = {
+    "CO": {
+        "g/km": {"name": "Grams per kilometer", "factor": 1.0},
+        "kg/km": {"name": "Kilograms per kilometer", "factor": 0.001},
+        "tonnes/km": {"name": "Tonnes per kilometer", "factor": 0.000001},
+        "g/mile": {"name": "Grams per mile", "factor": 1.60934},
+        "kg/year": {"name": "Kilograms per year (avg)", "factor": 1.0, "note": "Requires trip frequency"}
+    },
+    "CO2": {
+        "g/km": {"name": "Grams per kilometer", "factor": 1.0},
+        "kg/km": {"name": "Kilograms per kilometer", "factor": 0.001},
+        "tonnes/km": {"name": "Tonnes per kilometer", "factor": 0.000001},
+        "kg CO2e/km": {"name": "kg CO2 equivalent per km", "factor": 0.001},
+        "tonnes CO2e/year": {"name": "Tonnes CO2e per year", "factor": 1.0, "note": "Requires annual distance"},
+        "g/mile": {"name": "Grams per mile", "factor": 1.60934}
+    },
+    "NOx": {
+        "g/km": {"name": "Grams per kilometer", "factor": 1.0},
+        "kg/km": {"name": "Kilograms per kilometer", "factor": 0.001},
+        "mg/km": {"name": "Milligrams per kilometer", "factor": 1000.0},
+        "g/mile": {"name": "Grams per mile", "factor": 1.60934},
+        "kg NO2e/km": {"name": "kg NO2 equivalent per km", "factor": 0.001}
+    },
+    "PM": {
+        "mg/km": {"name": "Milligrams per kilometer", "factor": 1.0},
+        "g/km": {"name": "Grams per kilometer", "factor": 0.001},
+        "kg/km": {"name": "Kilograms per kilometer", "factor": 0.000001},
+        "µg/km": {"name": "Micrograms per kilometer", "factor": 1000.0},
+        "mg/mile": {"name": "Milligrams per mile", "factor": 1.60934}
+    },
+    "VOC": {
+        "g/km": {"name": "Grams per kilometer", "factor": 1.0},
+        "kg/km": {"name": "Kilograms per kilometer", "factor": 0.001},
+        "mg/km": {"name": "Milligrams per kilometer", "factor": 1000.0},
+        "g/mile": {"name": "Grams per mile", "factor": 1.60934}
+    },
+    "FC": {
+        "L/100km": {"name": "Liters per 100 km", "factor": 1.0},
+        "L/km": {"name": "Liters per km", "factor": 0.01},
+        "gal/100mi": {"name": "Gallons per 100 miles (US)", "factor": 2.3521},
+        "mpg": {"name": "Miles per gallon (US)", "factor": 1.0, "note": "Inverse calculation"},
+        "km/L": {"name": "Kilometers per liter", "factor": 1.0, "note": "Inverse calculation"}
+    }
+}
+
+# Store selected units for each pollutant
+selected_units = {}
+for poll in pollutants_available.keys():
+    if poll in unit_conversion_options:
+        default_unit = list(unit_conversion_options[poll].keys())[0]
+        selected_unit = st.sidebar.selectbox(
+            f"{poll} Display Unit",
+            options=list(unit_conversion_options[poll].keys()),
+            format_func=lambda x, p=poll: f"{x} - {unit_conversion_options[p][x]['name']}",
+            key=f"unit_{poll}"
+        )
+        selected_units[poll] = selected_unit
+    else:
+        selected_units[poll] = pollutants_available[poll]['unit']
+
+# Store in session state for access across tabs
+st.session_state.selected_units = selected_units
+st.session_state.unit_conversion_options = unit_conversion_options
+
+# Show conversion info
+if st.sidebar.checkbox("Show Conversion Info", value=False):
+    st.sidebar.markdown("**Conversion Notes:**")
+    st.sidebar.info("""
+    - **CO2e**: CO2 equivalent includes global warming potential
+    - **Annual calculations**: Based on average 15,000 km/year
+    - **Mile conversions**: 1 mile = 1.60934 km
+    - **Inverse units** (mpg, km/L): Calculated as reciprocal
+    """)
+
+st.sidebar.markdown("---")
 # ==================== FILE UPLOADS ====================
 st.sidebar.header("📂 Upload Input Files")
 copert_files = st.sidebar.expander("COPERT Parameter Files", expanded=True)
@@ -167,6 +248,67 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "🗺️ Interactive Map",
     "📥 Download Results"
 ])
+
+# ==================== UNIT CONVERSION FUNCTION ====================
+def convert_emission_value(value, pollutant, from_unit, to_unit, distance_km=None):
+    """
+    Convert emission values between different units
+    
+    Args:
+        value: Original emission value
+        pollutant: Pollutant type (CO, CO2, NOx, etc.)
+        from_unit: Original unit
+        to_unit: Target unit
+        distance_km: Optional distance for annual calculations
+    
+    Returns:
+        Converted value
+    """
+    if from_unit == to_unit:
+        return value
+    
+    if pollutant not in unit_conversion_options:
+        return value
+    
+    conversions = unit_conversion_options[pollutant]
+    
+    if to_unit not in conversions:
+        return value
+    
+    # Handle inverse calculations (mpg, km/L)
+    if to_unit in ["mpg", "km/L"]:
+        if value == 0:
+            return 0
+        if to_unit == "mpg":
+            # Convert L/100km to mpg
+            return 235.214 / value if value != 0 else 0
+        elif to_unit == "km/L":
+            # Convert L/100km to km/L
+            return 100 / value if value != 0 else 0
+    
+    # Handle annual conversions
+    if "year" in to_unit:
+        annual_distance = distance_km if distance_km else 15000  # Default 15,000 km/year
+        base_value = value * conversions[to_unit]["factor"]
+        return base_value * annual_distance
+    
+    # Standard conversion
+    return value * conversions[to_unit]["factor"]
+
+def format_emission_value(value, unit):
+    """Format emission value based on magnitude"""
+    if value == 0:
+        return "0.00"
+    elif value < 0.001:
+        return f"{value:.6f}"
+    elif value < 0.1:
+        return f"{value:.4f}"
+    elif value < 10:
+        return f"{value:.3f}"
+    elif value < 1000:
+        return f"{value:.2f}"
+    else:
+        return f"{value:.1f}"
 
 # ==================== TAB 1: INSTRUCTIONS ====================
 with tab1:
@@ -1057,23 +1199,58 @@ with tab4:
 
                         # Display results summary
                         st.subheader("📊 Emission Summary")
-                        # Create summary dataframe with LDV and HDV
+                        
+                        # Get selected units
+                        selected_units = st.session_state.get('selected_units', {})
+                        unit_conversion_options = st.session_state.get('unit_conversion_options', {})
+                        
+                        # Create summary dataframe with converted units
                         summary_data = []
                         for poll in selected_pollutants:
+                            target_unit = selected_units.get(poll, pollutants_available[poll]['unit'])
+                            original_unit = pollutants_available[poll]['unit']
+                            
+                            # Convert values
+                            total_pc_converted = convert_emission_value(
+                                emissions_data[poll]['pc'].sum(), poll, original_unit, target_unit
+                            )
+                            total_ldv_converted = convert_emission_value(
+                                emissions_data[poll]['ldv'].sum(), poll, original_unit, target_unit
+                            )
+                            total_hdv_converted = convert_emission_value(
+                                emissions_data[poll]['hdv'].sum(), poll, original_unit, target_unit
+                            )
+                            total_moto_converted = convert_emission_value(
+                                emissions_data[poll]['moto'].sum(), poll, original_unit, target_unit
+                            )
+                            total_converted = convert_emission_value(
+                                emissions_data[poll]['total'].sum(), poll, original_unit, target_unit
+                            )
+                            avg_converted = convert_emission_value(
+                                emissions_data[poll]['total'].mean(), poll, original_unit, target_unit
+                            )
+                            max_converted = convert_emission_value(
+                                emissions_data[poll]['total'].max(), poll, original_unit, target_unit
+                            )
+                            
                             summary_data.append({
                                 'Pollutant': poll,
-                                'Total PC': f"{emissions_data[poll]['pc'].sum():.2f}",
-                                'Total LDV': f"{emissions_data[poll]['ldv'].sum():.2f}",
-                                'Total HDV': f"{emissions_data[poll]['hdv'].sum():.2f}", 
-                                'Total Moto': f"{emissions_data[poll]['moto'].sum():.2f}",
-                                'Total': f"{emissions_data[poll]['total'].sum():.2f}",
-                                'Avg per Link': f"{emissions_data[poll]['total'].mean():.3f}",
-                                'Max': f"{emissions_data[poll]['total'].max():.2f}",
-                                'Unit': pollutants_available[poll]['unit']
+                                'Total PC': format_emission_value(total_pc_converted, target_unit),
+                                'Total LDV': format_emission_value(total_ldv_converted, target_unit),
+                                'Total HDV': format_emission_value(total_hdv_converted, target_unit),
+                                'Total Moto': format_emission_value(total_moto_converted, target_unit),
+                                'Total': format_emission_value(total_converted, target_unit),
+                                'Avg per Link': format_emission_value(avg_converted, target_unit),
+                                'Max': format_emission_value(max_converted, target_unit),
+                                'Unit': target_unit
                             })
-
+                        
                         summary_df = pd.DataFrame(summary_data)
                         st.dataframe(summary_df, use_container_width=True)
+                        
+                        # Show conversion notice if units were changed
+                        if any(selected_units.get(p) != pollutants_available[p]['unit'] for p in selected_pollutants):
+                            st.info("ℹ️ Values have been converted to your selected display units")
 
                         # Detailed results by pollutant
                         for poll in selected_pollutants:
@@ -1120,6 +1297,14 @@ with tab5:
         selected_pollutants = st.session_state.selected_pollutants
         data_link = st.session_state.data_link
 
+                    # ADD UNIT DISPLAY TOGGLE
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown("Select analysis views below")
+        with col2:
+            use_converted_units = st.checkbox("Use Converted Units", value=True, 
+                                             help="Display values in your selected units from sidebar")
+
         if selected_pollutants:
             # ===== NEW: FUEL TYPE BREAKDOWN SECTION =====
             st.subheader("⛽ Emissions by Fuel Type")
@@ -1134,7 +1319,16 @@ with tab5:
                 st.metric("Average Gasoline Proportion", f"{gasoline_prop_avg*100:.1f}%")
             with col2:
                 st.metric("Average Diesel Proportion", f"{diesel_prop_avg*100:.1f}%")
-            
+
+            for poll in selected_pollutants:
+                pc_total = emissions_data[poll]['pc'].sum()
+                
+                if use_converted_units:
+                    selected_units = st.session_state.get('selected_units', {})
+                    target_unit = selected_units.get(poll, pollutants_available[poll]['unit'])
+                    original_unit = pollutants_available[poll]['unit']
+                    pc_total = convert_emission_value(pc_total, poll, original_unit, target_unit)
+             
             # Select pollutant for fuel type analysis
             fuel_analysis_pollutant = st.selectbox(
                 "Select Pollutant for Fuel Type Analysis",
@@ -1729,21 +1923,46 @@ with tab6:
                             st.code(traceback.format_exc())
         
         # NEW: Add summary statistics for the selected vehicle type and pollutant
+        # NEW: Add summary statistics for the selected vehicle type and pollutant
         st.markdown("---")
         st.subheader(f"📊 {map_type} {map_pollutant} Summary")
+        
+        # Get conversion settings
+        selected_units = st.session_state.get('selected_units', {})
+        target_unit = selected_units.get(map_pollutant, pollutants_available[map_pollutant]['unit'])
+        original_unit = pollutants_available[map_pollutant]['unit']
+        
+        # Convert values
+        total_converted = convert_emission_value(
+            hot_emission.sum(), map_pollutant, original_unit, target_unit
+        )
+        avg_converted = convert_emission_value(
+            hot_emission.mean(), map_pollutant, original_unit, target_unit
+        )
+        max_converted = convert_emission_value(
+            hot_emission.max(), map_pollutant, original_unit, target_unit
+        )
+        min_converted = convert_emission_value(
+            hot_emission.min(), map_pollutant, original_unit, target_unit
+        )
+        
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric(f"Total {map_type} {map_pollutant}", 
-                     f"{hot_emission.sum():.2f} {pollutants_available[map_pollutant]['unit']}")
+                     f"{format_emission_value(total_converted, target_unit)} {target_unit}")
         with col2:
             st.metric(f"Average per Link", 
-                     f"{hot_emission.mean():.3f} {pollutants_available[map_pollutant]['unit']}")
+                     f"{format_emission_value(avg_converted, target_unit)} {target_unit}")
         with col3:
             st.metric(f"Maximum", 
-                     f"{hot_emission.max():.2f} {pollutants_available[map_pollutant]['unit']}")
+                     f"{format_emission_value(max_converted, target_unit)} {target_unit}")
         with col4:
             st.metric(f"Minimum", 
-                     f"{hot_emission.min():.2f} {pollutants_available[map_pollutant]['unit']}")
+                     f"{format_emission_value(min_converted, target_unit)} {target_unit}")
+        
+        # Update colorbar label on map
+        if 'cb' in locals():
+            cb.set_label(f"{map_pollutant} ({target_unit})", fontsize=12)
         
     else:
         st.info("Please calculate emissions first in the 'Calculate Emissions' tab.")
@@ -1758,6 +1977,24 @@ with tab7:
         emissions_data = st.session_state.emissions_data
         data_link_np = st.session_state.data_link
         selected_pollutants = st.session_state.selected_pollutants
+                
+        # ADD UNIT SELECTION FOR EXPORT
+        st.subheader("📤 Export Settings")
+        col1, col2 = st.columns(2)
+        with col1:
+            export_in_converted_units = st.checkbox(
+                "Export in converted units",
+                value=False,
+                help="Export emissions in your selected display units instead of original g/km"
+            )
+        with col2:
+            if export_in_converted_units:
+                st.info("✅ Will export using sidebar unit selections")
+            else:
+                st.info("ℹ️ Will export in original units (g/km, mg/km, L/100km)")
+        
+        st.markdown("---")
+        # ============ END NEW SECTION ============
 
         # Create a single comprehensive results dataframe
         final_results_df = pd.DataFrame(data_link_np[:, :4], columns=['OSM_ID', 'Length_km', 'Flow', 'Speed'])
@@ -1773,15 +2010,36 @@ with tab7:
         proportion_df = pd.DataFrame(proportion_data, columns=proportion_columns)
         final_results_df = pd.concat([final_results_df, proportion_df], axis=1)
 
+        # ============ REPLACE WITH THIS ============
         for poll in selected_pollutants:
-            poll_df = pd.DataFrame({
-                f'{poll}_PC': emissions_data[poll]['pc'],
-                f'{poll}_LDV': emissions_data[poll]['ldv'],
-                f'{poll}_HDV': emissions_data[poll]['hdv'],
-                f'{poll}_Motorcycle': emissions_data[poll]['moto'],
-                f'{poll}_Total': emissions_data[poll]['total']
-            })
+            if export_in_converted_units and 'selected_units' in st.session_state:
+                selected_units = st.session_state.selected_units
+                target_unit = selected_units.get(poll, pollutants_available[poll]['unit'])
+                original_unit = pollutants_available[poll]['unit']
+                
+                poll_df = pd.DataFrame({
+                    f'{poll}_PC ({target_unit})': [convert_emission_value(v, poll, original_unit, target_unit) 
+                                                    for v in emissions_data[poll]['pc']],
+                    f'{poll}_LDV ({target_unit})': [convert_emission_value(v, poll, original_unit, target_unit) 
+                                                     for v in emissions_data[poll]['ldv']],
+                    f'{poll}_HDV ({target_unit})': [convert_emission_value(v, poll, original_unit, target_unit) 
+                                                     for v in emissions_data[poll]['hdv']],
+                    f'{poll}_Motorcycle ({target_unit})': [convert_emission_value(v, poll, original_unit, target_unit) 
+                                                            for v in emissions_data[poll]['moto']],
+                    f'{poll}_Total ({target_unit})': [convert_emission_value(v, poll, original_unit, target_unit) 
+                                                       for v in emissions_data[poll]['total']]
+                })
+            else:
+                poll_df = pd.DataFrame({
+                    f'{poll}_PC': emissions_data[poll]['pc'],
+                    f'{poll}_LDV': emissions_data[poll]['ldv'],
+                    f'{poll}_HDV': emissions_data[poll]['hdv'],
+                    f'{poll}_Motorcycle': emissions_data[poll]['moto'],
+                    f'{poll}_Total': emissions_data[poll]['total']
+                })
             final_results_df = pd.concat([final_results_df, poll_df], axis=1)
+        # ============ END REPLACEMENT ============
+
 
         # Convert the DataFrame to CSV format for download
         csv_export = final_results_df.to_csv(index=False).encode('utf-8')
@@ -1802,18 +2060,40 @@ with tab7:
         
         # IMPORTANT: Create summary_df BEFORE the button, but store it in session state
         # This ensures it's available when the button is clicked
+        # ============ REPLACE WITH THIS ============
         if 'summary_df_for_download' not in st.session_state or st.session_state.get('recalculate_summary', True):
             summary_data = []
             for poll in selected_pollutants:
+                # Determine which unit to use
+                if export_in_converted_units and 'selected_units' in st.session_state:
+                    selected_units = st.session_state.selected_units
+                    target_unit = selected_units.get(poll, pollutants_available[poll]['unit'])
+                    original_unit = pollutants_available[poll]['unit']
+                    
+                    total_pc = convert_emission_value(emissions_data[poll]['pc'].sum(), poll, original_unit, target_unit)
+                    total_ldv = convert_emission_value(emissions_data[poll]['ldv'].sum(), poll, original_unit, target_unit)
+                    total_hdv = convert_emission_value(emissions_data[poll]['hdv'].sum(), poll, original_unit, target_unit)
+                    total_moto = convert_emission_value(emissions_data[poll]['moto'].sum(), poll, original_unit, target_unit)
+                    grand_total = convert_emission_value(emissions_data[poll]['total'].sum(), poll, original_unit, target_unit)
+                    display_unit = target_unit
+                else:
+                    total_pc = emissions_data[poll]['pc'].sum()
+                    total_ldv = emissions_data[poll]['ldv'].sum()
+                    total_hdv = emissions_data[poll]['hdv'].sum()
+                    total_moto = emissions_data[poll]['moto'].sum()
+                    grand_total = emissions_data[poll]['total'].sum()
+                    display_unit = pollutants_available[poll]['unit']
+                
                 summary_data.append({
                     'Pollutant': poll,
-                    'Total PC': f"{emissions_data[poll]['pc'].sum():.2f}",
-                    'Total LDV': f"{emissions_data[poll]['ldv'].sum():.2f}",
-                    'Total HDV': f"{emissions_data[poll]['hdv'].sum():.2f}",
-                    'Total Moto': f"{emissions_data[poll]['moto'].sum():.2f}",
-                    'Grand Total': f"{emissions_data[poll]['total'].sum():.2f}",
-                    'Unit': pollutants_available[poll]['unit']
+                    'Total PC': format_emission_value(total_pc, display_unit),
+                    'Total LDV': format_emission_value(total_ldv, display_unit),
+                    'Total HDV': format_emission_value(total_hdv, display_unit),
+                    'Total Moto': format_emission_value(total_moto, display_unit),
+                    'Grand Total': format_emission_value(grand_total, display_unit),
+                    'Unit': display_unit
                 })
+        # ============ END REPLACEMENT ============
             st.session_state.summary_df_for_download = pd.DataFrame(summary_data)
             st.session_state.recalculate_summary = False
         
@@ -1831,16 +2111,34 @@ with tab7:
                         zipf.writestr('statistics_summary.csv', summary_df.to_csv(index=False))
 
                         # 3. Fuel Type Breakdown (if available)
+                        # ============ REPLACE WITH THIS ============
+                        # 3. Fuel Type Breakdown (if available)
                         if 'fuel_emissions_data' in st.session_state:
                             fuel_emissions = st.session_state.fuel_emissions_data
                             fuel_breakdown_data = []
                             for poll in selected_pollutants:
+                                if export_in_converted_units and 'selected_units' in st.session_state:
+                                    selected_units = st.session_state.selected_units
+                                    target_unit = selected_units.get(poll, pollutants_available[poll]['unit'])
+                                    original_unit = pollutants_available[poll]['unit']
+                                    
+                                    gas_total = convert_emission_value(fuel_emissions[poll]['gasoline'].sum(), 
+                                                                       poll, original_unit, target_unit)
+                                    diesel_total = convert_emission_value(fuel_emissions[poll]['diesel'].sum(), 
+                                                                          poll, original_unit, target_unit)
+                                    display_unit = target_unit
+                                else:
+                                    gas_total = fuel_emissions[poll]['gasoline'].sum()
+                                    diesel_total = fuel_emissions[poll]['diesel'].sum()
+                                    display_unit = pollutants_available[poll]['unit']
+                                
                                 fuel_breakdown_data.append({
                                     'Pollutant': poll,
-                                    'Gasoline_Total': f"{fuel_emissions[poll]['gasoline'].sum():.2f}",
-                                    'Diesel_Total': f"{fuel_emissions[poll]['diesel'].sum():.2f}",
-                                    'Unit': pollutants_available[poll]['unit']
+                                    'Gasoline_Total': format_emission_value(gas_total, display_unit),
+                                    'Diesel_Total': format_emission_value(diesel_total, display_unit),
+                                    'Unit': display_unit
                                 })
+                        # ============ END REPLACEMENT ============
                             fuel_df = pd.DataFrame(fuel_breakdown_data)
                             zipf.writestr('fuel_type_breakdown.csv', fuel_df.to_csv(index=False))
 
@@ -1848,14 +2146,11 @@ with tab7:
                         gasoline_avg = data_link_np[:, 4].mean()
                         diesel_avg = 1 - gasoline_avg
                         
-                        report_text = f"""
-Traffic Emission Calculation Report
-Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-Selected Pollutants: {', '.join(selected_pollutants)}
 Methodology: {calculation_method}
 Ambient Temperature: {ambient_temp}°C
 Trip Length (Cold Start): {trip_length} km
+Export Units: {'Converted Units' if export_in_converted_units else 'Original Units (g/km, mg/km, L/100km)'}
+{f"Unit Conversions Applied: {', '.join([f'{p}={st.session_state.selected_units.get(p)}' for p in selected_pollutants])}" if export_in_converted_units and 'selected_units' in st.session_state else ''}
 
 --- Summary Statistics ---
 {summary_df.to_string(index=False)}
@@ -1900,15 +2195,36 @@ If 9 columns, LDV/HDV flow proportions were read from columns 8 and 9.
                         use_container_width=True
                     )
         
-        st.markdown("---")
+        # ============ REPLACE WITH THIS ============
         st.markdown("### 📚 Export Formats")
+        
+        # Show current export settings
+        if export_in_converted_units and 'selected_units' in st.session_state:
+            st.success(f"""
+            **Current Export Settings: ✅ Converted Units**
+            
+            Your exports will use these units:
+            {chr(10).join([f"- {poll}: {st.session_state.selected_units.get(poll, pollutants_available[poll]['unit'])}" for poll in selected_pollutants])}
+            """)
+        else:
+            st.info("""
+            **Current Export Settings: ℹ️ Original Units**
+            
+            Exports will use standard COPERT units:
+            - CO, NOx, VOC: g/km
+            - CO2: g/km  
+            - PM: mg/km
+            - FC: L/100km
+            """)
+        
+        st.markdown("---")
         st.info("""
         **Available Export Formats:**
         - **CSV**: Comma-separated values for spreadsheet applications
         - **ZIP**: Complete analysis package with all data and documentation
         
         **Vehicle Type Breakdown:**
-        All exports now include separate columns for:
+        All exports include separate columns for:
         - PC: Passenger Cars
         - LDV: Light Duty Vehicles
         - HDV: Heavy Duty Vehicles
@@ -1917,7 +2233,11 @@ If 9 columns, LDV/HDV flow proportions were read from columns 8 and 9.
         
         **Fuel Type Data:**
         If fuel tracking is enabled, ZIP includes gasoline/diesel breakdown
+        
+        **Unit Conversion:**
+        Enable "Export in converted units" to use your sidebar unit selections in all exports
         """)
+        # ============ END REPLACEMENT ============
     else:
         st.info("Calculate emissions first to create download package")
 
