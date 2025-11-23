@@ -2142,16 +2142,28 @@ with tab7:
                             fuel_df = pd.DataFrame(fuel_breakdown_data)
                             zipf.writestr('fuel_type_breakdown.csv', fuel_df.to_csv(index=False))
 
-                        # 4. Text Report
-                        gasoline_avg = data_link_np[:, 4].mean()
-                        diesel_avg = 1 - gasoline_avg
-                        
+                # 4. Text Report - WITH FIX
+                gasoline_avg = data_link_np[:, 4].mean()
+                diesel_avg = 1 - gasoline_avg
+                
+                # Build report text without problematic characters
+                report_text = f"""
+Traffic Emission Calculation Report
+Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+Selected Pollutants: {', '.join(selected_pollutants)}
 Methodology: {calculation_method}
-Ambient Temperature: {ambient_temp}°C
+Ambient Temperature: {ambient_temp} degrees Celsius
 Trip Length (Cold Start): {trip_length} km
 Export Units: {'Converted Units' if export_in_converted_units else 'Original Units (g/km, mg/km, L/100km)'}
-{f"Unit Conversions Applied: {', '.join([f'{p}={st.session_state.selected_units.get(p)}' for p in selected_pollutants])}" if export_in_converted_units and 'selected_units' in st.session_state else ''}
-
+"""
+                
+                # Add unit conversions if applicable
+                if export_in_converted_units and 'selected_units' in st.session_state:
+                    unit_conversions = ', '.join([f'{p}={st.session_state.selected_units.get(p)}' for p in selected_pollutants])
+                    report_text += f"Unit Conversions Applied: {unit_conversions}\n"
+                
+                report_text += f"""
 --- Summary Statistics ---
 {summary_df.to_string(index=False)}
 
@@ -2174,26 +2186,26 @@ If 9 columns, LDV/HDV flow proportions were read from columns 8 and 9.
 
 --- Top 5 Emitting Links ---
 """
-                        # Add top 5 links for each pollutant
-                        for poll in selected_pollutants:
-                            temp_df = final_results_df.copy()
-                            temp_df['Total_Emission'] = emissions_data[poll]['total']
-                            top_5 = temp_df.nlargest(5, 'Total_Emission')[['OSM_ID', 'Total_Emission']]
-                            report_text += f"\n{poll} Top 5 Links:\n{top_5.to_string(index=False)}\n"
+                # Add top 5 links for each pollutant
+                for poll in selected_pollutants:
+                    temp_df = final_results_df.copy()
+                    temp_df['Total_Emission'] = emissions_data[poll]['total']
+                    top_5 = temp_df.nlargest(5, 'Total_Emission')[['OSM_ID', 'Total_Emission']]
+                    report_text += f"\n{poll} Top 5 Links:\n{top_5.to_string(index=False)}\n"
 
-                        zipf.writestr('detailed_report.txt', report_text)
-                        
-                    st.success("✅ ZIP report generated successfully!")
+                zipf.writestr('detailed_report.txt', report_text)
+                
+            st.success("✅ ZIP report generated successfully!")
 
-                    buffer.seek(0)
-                    st.download_button(
-                        label="📦 Download ZIP Report",
-                        data=buffer,
-                        file_name="traffic_emission_analysis.zip",
-                        mime="application/zip",
-                        key='download_zip',
-                        use_container_width=True
-                    )
+            buffer.seek(0)
+            st.download_button(
+                label="📦 Download ZIP Report",
+                data=buffer,
+                file_name="traffic_emission_analysis.zip",
+                mime="application/zip",
+                key='download_zip',
+                use_container_width=True
+            )
         
         # ============ REPLACE WITH THIS ============
         st.markdown("### 📚 Export Formats")
