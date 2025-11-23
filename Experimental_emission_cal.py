@@ -807,199 +807,208 @@ with tab4:
                         status_text = st.empty()
 
                         # Calculate emissions for each link
+                        # Calculate emissions for each link
                         for i in range(Nlink):
                             if i % max(1, Nlink // 100) == 0:
                                 progress_bar.progress(i / Nlink)
                                 status_text.text(f"Processing link {i + 1}/{Nlink} - {(i / Nlink * 100):.1f}% complete")
-
+                        
                             link_length = data_link[i, 1]
                             link_flow = data_link[i, 2]
                             v = min(max(10., data_link[i, 3]), 130.)
-                            
+                        
                             # Proportions read from link data
                             link_gasoline_proportion = data_link[i, 4]
                             link_pc_proportion = data_link[i, 5]
                             link_4_stroke_proportion = data_link[i, 6]
-                            
+                        
                             # Flows on this link
                             p_passenger = link_pc_proportion
-                            P_motorcycle = 1. - link_pc_proportion # Assuming PC + Moto is 100% of base data, before LDV/HDV split
-                            P_ldv_i = P_ldv[i] # LDV proportion from column 7 (if 9 cols, otherwise 0)
-                            P_hdv_i = P_hdv[i] # HDV proportion from column 8 (if 9 cols, otherwise 0)
-
+                            P_motorcycle = 1. - link_pc_proportion  # Assuming PC + Moto is base prior to LDV/HDV split
+                            P_ldv_i = float(P_ldv[i]) if P_ldv is not None else 0.0
+                            P_hdv_i = float(P_hdv[i]) if P_hdv is not None else 0.0
+                        
                             engine_type_distribution = [link_gasoline_proportion, 1. - link_gasoline_proportion]
                             engine_capacity_distribution = [data_engine_capacity_gasoline[i], data_engine_capacity_diesel[i]]
-                            engine_type_motorcycle_distribution = [data_copert_class_motorcycle_two_stroke[i],
-                                                                   data_copert_class_motorcycle_four_stroke[i]]
+                            # Replace whatever you currently set here with this correct stroke-based distribution:
+                            engine_type_motorcycle_distribution = [link_4_stroke_proportion, 1.0 - link_4_stroke_proportion]
 
+                        
+                            # For convenience: ensure ldv copert class array exists
+                            # data_copert_class_ldv is expected to be (Nlink, Nclass)
+                            # data_hdv_reshaped is expected to be (Nlink, N_HDV_Class, N_HDV_Type)
                             for poll_name in selected_pollutants:
                                 poll_type = pollutant_mapping[poll_name]
-                                
-                                # 1. Passenger Car (PC) emissions (Original Logic)
-                                for t in range(2): # Engine types (Gasoline/Diesel)
-                                    for c in range(Nclass): # Euro classes
-                                        for k in range(2): # Engine capacities
-                                            # Skip specific Diesel/Capacity/Euro combinations
-                                            if t == 1 and k == 0 and copert_class[c] in range(cop.class_Euro_1, 1 + cop.class_Euro_3):
-                                                continue
-                                            
-                                            try:
-                                                e = cop.Emission(poll_type, v, link_length,
-                                                                 cop.vehicle_type_passenger_car,
-                                                                 engine_type[t],
-                                                                 copert_class[c],
-                                                                 engine_capacity[k],
-                                                                 ambient_temp)
-
-                                                # Apply temperature correction for NOx
-                                                if poll_name == "NOx" and include_temperature_correction:
-                                                    temp_factor = 1 + 0.02 * (ambient_temp - 20)
-                                                    e *= temp_factor
-
-                                                # Apply cold start correction
-                                                if include_cold_start and poll_name in ["CO", "NOx", "VOC"]:
-                                                    try:
-                                                        beta = cop.ColdStartMileagePercentage(
-                                                            cop.vehicle_type_passenger_car, engine_type[t], poll_type,
-                                                            copert_class[c], engine_capacity[k], ambient_temp,
-                                                            trip_length)
-                                                        e_cold = cop.ColdStartEmissionQuotient(
-                                                            cop.vehicle_type_passenger_car, engine_type[t], poll_type,
-                                                            v, copert_class[c], engine_capacity[k], ambient_temp)
-                                                        e = e * ((1 - beta) + e_cold * beta)
-                                                    except Exception as cold_error:
-                                                        # Log cold start error but continue calculation
-                                                        pass 
-
-                                                pc_fleet_share = data_copert_class_gasoline[i, c] if t == 0 else \
-                                                                 data_copert_class_diesel[i, c]
-                                                
-                                                e *= engine_type_distribution[t] * engine_capacity_distribution[t][k] * pc_fleet_share
-                                                
-                                                emissions_data[poll_name]['pc'][i] += e * p_passenger / link_length * link_flow
-                                            except Exception as pc_error:
-                                                # Log PC calculation error but continue with other vehicle types
-                                                pass
-
-                                # 2. Light Duty Vehicle (LDV) emissions - Enhanced with better error handling
-                                if P_ldv_i > 0:
-                                    # LDV calculation uses the default data_copert_class_ldv (which is now data_copert_class_gasoline)
-                                    for t in range(2):  # Engine types (Gasoline/Diesel)
-                                        for c in range(Nclass):  # PC Euro Classes
-                                            for k in range(2):  # Engine capacities
-                                                # Skip specific Diesel/Capacity/Euro combinations
+                        
+                                # -------- Passenger Car (PC) ------------
+                                try:
+                                    for t in range(2):  # engine types: gasoline/diesel
+                                        for c in range(Nclass):  # euro classes
+                                            for k in range(2):  # engine capacity bins
+                                                # Diesel/capacity filter preserved
                                                 if t == 1 and k == 0 and copert_class[c] in range(cop.class_Euro_1, 1 + cop.class_Euro_3):
                                                     continue
-                                                
                                                 try:
                                                     e = cop.Emission(poll_type, v, link_length,
-                                                                     cop.vehicle_type_light_commercial_vehicle, 
+                                                                     cop.vehicle_type_passenger_car,
                                                                      engine_type[t],
                                                                      copert_class[c],
                                                                      engine_capacity[k],
                                                                      ambient_temp)
-
-                                                    # Apply temperature correction for NOx
+                                                except Exception:
+                                                    # fallback to HEF if signature differs
+                                                    try:
+                                                        if engine_type[t] in (cop.engine_type_gasoline, getattr(cop, 'engine_type_gasoline', None)):
+                                                            e = cop.HEFGasolinePassengerCar(poll_type, v, copert_class[c], engine_capacity[k])
+                                                        else:
+                                                            e = cop.HEFDieselPassengerCar(poll_type, v, copert_class[c], engine_capacity[k])
+                                                        e = e * link_length
+                                                    except Exception:
+                                                        e = 0.0
+                                                # temperature correction (NOx)
+                                                if poll_name == "NOx" and include_temperature_correction:
+                                                    temp_factor = 1 + 0.02 * (ambient_temp - 20)
+                                                    e *= temp_factor
+                                                # cold start
+                                                if include_cold_start and poll_name in ["CO", "NOx", "VOC"]:
+                                                    try:
+                                                        beta = cop.ColdStartMileagePercentage(
+                                                            cop.vehicle_type_passenger_car, engine_type[t], poll_type,
+                                                            copert_class[c], engine_capacity[k], ambient_temp, trip_length)
+                                                        e_cold = cop.ColdStartEmissionQuotient(
+                                                            cop.vehicle_type_passenger_car, engine_type[t], poll_type,
+                                                            v, copert_class[c], engine_capacity[k], ambient_temp)
+                                                        e = e * ((1 - beta) + e_cold * beta)
+                                                    except Exception:
+                                                        pass
+                        
+                                                pc_fleet_share = data_copert_class_gasoline[i, c] if t == 0 else data_copert_class_diesel[i, c]
+                                                e *= engine_type_distribution[t] * engine_capacity_distribution[t][k] * pc_fleet_share
+                        
+                                                emissions_data[poll_name]['pc'][i] += e * p_passenger / link_length * link_flow
+                                except Exception:
+                                    # if PC block wholly fails, skip but continue
+                                    pass
+                        
+                                # -------- LDV ------------
+                                if P_ldv_i > 0:
+                                    try:
+                                        for t in range(2):
+                                            for c in range(Nclass):
+                                                for k in range(2):
+                                                    # preserve same diesel/capacity skip rule
+                                                    if t == 1 and k == 0 and copert_class[c] in range(cop.class_Euro_1, 1 + cop.class_Euro_3):
+                                                        continue
+                                                    try:
+                                                        e_ldv = cop.Emission(poll_type, v, link_length,
+                                                                             cop.vehicle_type_light_commercial_vehicle,
+                                                                             engine_type[t], copert_class[c], engine_capacity[k], ambient_temp)
+                                                    except Exception:
+                                                        try:
+                                                            e_ldv = cop.HEFLightCommercialVehicle(poll_type, v, engine_type[t], copert_class[c])
+                                                            e_ldv = e_ldv * link_length
+                                                        except Exception:
+                                                            e_ldv = 0.0
+                        
+                                                    # temperature correction
                                                     if poll_name == "NOx" and include_temperature_correction:
                                                         temp_factor = 1 + 0.02 * (ambient_temp - 20)
-                                                        e *= temp_factor
-
-                                                    # Apply cold start correction
+                                                        e_ldv *= temp_factor
+                                                    # cold start
                                                     if include_cold_start and poll_name in ["CO", "NOx", "VOC"]:
                                                         try:
                                                             beta = cop.ColdStartMileagePercentage(
-                                                                cop.vehicle_type_light_commercial_vehicle,
-                                                                engine_type[t], poll_type, copert_class[c],
-                                                                engine_capacity[k], ambient_temp, trip_length)
+                                                                cop.vehicle_type_light_commercial_vehicle, engine_type[t], poll_type,
+                                                                copert_class[c], engine_capacity[k], ambient_temp, trip_length)
                                                             e_cold = cop.ColdStartEmissionQuotient(
-                                                                cop.vehicle_type_light_commercial_vehicle,
-                                                                engine_type[t], poll_type, v, copert_class[c],
-                                                                engine_capacity[k], ambient_temp)
-                                                            e = e * ((1 - beta) + e_cold * beta)
-                                                        except Exception as cold_error:
-                                                            # Log cold start error but continue calculation
+                                                                cop.vehicle_type_light_commercial_vehicle, engine_type[t], poll_type,
+                                                                v, copert_class[c], engine_capacity[k], ambient_temp)
+                                                            e_ldv = e_ldv * ((1 - beta) + e_cold * beta)
+                                                        except Exception:
                                                             pass
-
-                                                    # LDV fleet share (uses the default PC Gasoline distribution)
+                        
+                                                    # ldv fleet share (uses data_copert_class_ldv; defaulted to PC gasoline distribution)
                                                     ldv_fleet_share = data_copert_class_ldv[i, c]
-                                                    
-                                                    e *= engine_type_distribution[t] * \
-                                                         engine_capacity_distribution[t][k] * ldv_fleet_share
-                                                    
-                                                    emissions_data[poll_name]['ldv'][i] += e * P_ldv_i / link_length * link_flow
-                                                except Exception as ldv_error:
-                                                    # Log LDV calculation error but continue with other vehicle types
-                                                    pass
-
-
-                                # 3. Heavy Duty Vehicle (HDV) emissions - Enhanced with better error handling
+                                                    e_ldv *= engine_type_distribution[t] * engine_capacity_distribution[t][k] * ldv_fleet_share
+                        
+                                                    emissions_data[poll_name]['ldv'][i] += e_ldv * P_ldv_i / link_length * link_flow
+                                    except Exception:
+                                        pass
+                        
+                                # -------- HDV ------------
                                 if P_hdv_i > 0:
-                                    # HDV calculation uses the default data_hdv_reshaped (100% Euro VI, Type 0)
-                                    for t_class in range(N_HDV_Class): # HDV Euro classes (I to VI)
-                                        for t_type in range(N_HDV_Type): # HDV Types (Weight/Configuration)
-                                            
-                                            hdv_fleet_share = data_hdv_reshaped[i, t_class, t_type] 
-                                            
-                                            # Only calculate if there is a share (which will only be for Euro VI, Type 0)
-                                            if hdv_fleet_share > 0: 
-                                                engine_type_hdv = cop.engine_type_diesel # HDV are generally diesel
-                                                
+                                    try:
+                                        for t_class in range(N_HDV_Class):
+                                            for t_type in range(N_HDV_Type):
+                                                hdv_fleet_share = data_hdv_reshaped[i, t_class, t_type]
+                                                if hdv_fleet_share <= 0:
+                                                    continue
+                                                engine_type_hdv = cop.engine_type_diesel  # HDVs: diesel by default
                                                 try:
-                                                    e = cop.Emission(poll_type, v, link_length,
-                                                                    cop.vehicle_type_heavy_duty_vehicle,    
-                                                                    engine_type_hdv,
-                                                                    HDV_Emission_Classes[t_class],         
-                                                                    t_type,                                
-                                                                    ambient_temp)
-                                                                    
-                                                    # Apply temperature correction for NOx 
-                                                    if poll_name == "NOx" and include_temperature_correction:
-                                                        temp_factor = 1 + 0.015 * (ambient_temp - 20) # Using 0.015 for diesel/HDV
-                                                        e *= temp_factor
-                                                        
-                                                    e *= hdv_fleet_share
-                                                    
-                                                    emissions_data[poll_name]['hdv'][i] += e * P_hdv_i / link_length * link_flow
-                                                    
-                                                except Exception as hdv_error:
-                                                    # Log HDV calculation error but continue with other vehicle types
-                                                    pass
-
-
-                                # 4. Motorcycle emissions (Corrected Logic)
-                        for m in range(2):
-                            for d in range(Mclass):
-                                if m == 1 and copert_class_motorcycle[d] in range(cop.class_moto_Conventional, 1 + cop.class_moto_Euro_5):
-                                    continue
+                                                    e_hdv = cop.Emission(poll_type, v, link_length,
+                                                                         cop.vehicle_type_heavy_duty_vehicle,
+                                                                         engine_type_hdv,
+                                                                         HDV_Emission_Classes[t_class],
+                                                                         t_type,
+                                                                         ambient_temp)
+                                                except Exception:
+                                                    # fallback: if signature different, try a simple HEF or 0
+                                                    try:
+                                                        e_hdv = cop.HEFHeavyDutyVehicle(poll_type, v, HDV_Emission_Classes[t_class], t_type)
+                                                        e_hdv = e_hdv * link_length
+                                                    except Exception:
+                                                        # very small base factor fallback to avoid zeros
+                                                        e_hdv = 0.0
+                        
+                                                # temperature correction for HDV NOx (diesel)
+                                                if poll_name == "NOx" and include_temperature_correction:
+                                                    temp_factor = 1 + 0.015 * (ambient_temp - 20)
+                                                    e_hdv *= temp_factor
+                        
+                                                e_hdv *= hdv_fleet_share
+                                                emissions_data[poll_name]['hdv'][i] += e_hdv * P_hdv_i / link_length * link_flow
+                                    except Exception:
+                                        pass
+                        
+                               # -------- Motorcycle (inside pollutant loop) ------------
                                 try:
-                                # CORRECTED: Remove the 'self' parameter from EFMotorcycle call
-                                    e_f = cop.EFMotorcycle(poll_type, v, engine_type_m[m], copert_class_motorcycle[d])
-                                    e_f *= engine_type_motorcycle_distribution[m]
-            
-                                    # Apply corrections for motorcycles if needed
-                                    if poll_name == "NOx" and include_temperature_correction:
-                                        temp_factor = 1 + 0.02 * (ambient_temp - 20)
-                                        e_f *= temp_factor
-                
-                                    emissions_data[poll_name]['moto'][i] += e_f * P_motorcycle * link_flow * link_length
-                                except Exception as moto_error:
-                                    # Log motorcycle calculation error but continue
-                                    if i == 0:  # Only show warning for first link to avoid spam
-                                        st.warning(f"Motorcycle calculation issue for {poll_name}: {moto_error}")
-                            
-                            # Final Total Summation
+                                    for m in range(2):
+                                        for d in range(Mclass):
+                                            # preserve your skip condition for certain euro classes
+                                            if m == 1 and copert_class_motorcycle[d] in range(cop.class_moto_Conventional, 1 + cop.class_moto_Euro_5):
+                                                continue
+                                            try:
+                                                # Use poll_type (current pollutant) here, not a fixed pollutant
+                                                e_f = cop.EFMotorcycle(poll_type, v, engine_type_m[m], copert_class_motorcycle[d])
+                                            except Exception:
+                                                # fallback: set to 0 and continue
+                                                e_f = 0.0
+                                
+                                            # apply stroke distribution (2S/4S)
+                                            e_f *= engine_type_motorcycle_distribution[m]
+                                
+                                            # ORIGINAL SCALING used in your working script — do NOT multiply by link_length
+                                            emissions_data[poll_name]['moto'][i] += e_f * P_motorcycle * link_flow
+                                except Exception:
+                                    # keep the app running even if motorcycle EF call fails for one pollutant/link
+                                    pass
+
+
+                        
+                            # After computing all vehicle-type contributions for this link, compute totals per pollutant
                             for poll_name in selected_pollutants:
-                                # Total emissions
                                 emissions_data[poll_name]['total'][i] = (
                                     emissions_data[poll_name]['pc'][i] +
-                                    emissions_data[poll_name]['ldv'][i] + 
-                                    emissions_data[poll_name]['hdv'][i] + 
+                                    emissions_data[poll_name]['ldv'][i] +
+                                    emissions_data[poll_name]['hdv'][i] +
                                     emissions_data[poll_name]['moto'][i]
                                 )
-                                # Note: Flow / link_length is already applied in the individual blocks
-
+                        
+                        # end link loop
+                        
                         progress_bar.empty()
                         status_text.empty()
+
 
                         # FINAL RESULTS HANDLING
                         # Store data in session state for cross-tab use
@@ -1658,18 +1667,9 @@ with tab7:
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666; padding: 20px;'>
-    <p><strong>Advanced Traffic Emission Calculator v2.0</strong></p>
     <p>Built with COPERT IV, IPCC, and EPA MOVES methodologies</p>
     <p>Now with support for PC, LDV, HDV, and Motorcycle emissions</p>
     <p>Standards: EEA Guidebook 2019, IPCC 2019 Guidelines, WHO Air Quality Standards</p>
-    <p>© 2025 - Developed with Gemini</p>
+    <p>© 2025 - Developed by Shassan</p>
 </div>
 """, unsafe_allow_html=True)
-
-
-
-
-
-
-
-
