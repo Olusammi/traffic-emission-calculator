@@ -1920,6 +1920,7 @@ with tab6:
                             status_text.text("Plotting emission data on map...")
                             
                             # ===== PLOT ROADS =====
+                            # ===== PLOT ROADS =====
                             roads_plotted = 0
                             roads_without_data = 0
                             labeled_roads = {}
@@ -1943,25 +1944,98 @@ with tab6:
                                         max_emission = hot_emission[filtered_mask].max()
                                         line_width = (current_emission / max_emission) * line_width_multiplier * 3
                                     
-                                    plot_kwargs = {
-                                        'color': color_value,
-                                        'lw': line_width,
-                                        'alpha': road_transparency,
-                                        'solid_edgecolor': 'black',
-                                        'solid_joinstyle': 'round'
-                                    }
-                                    
-                                    if enhanced_styling:
-                                        plot_kwargs['solid_capstyle'] = 'round'
-                                    
+                                    # Draw edge/outline if requested
                                     if edge_width > 0:
                                         ax.plot([x[0] for x in refs], [x[1] for x in refs],
                                                color='black', lw=line_width + edge_width * 2,
                                                alpha=road_transparency * 0.5, zorder=1)
                                     
-                                    ax.plot([x[0] for x in refs], [x[1] for x in refs], **plot_kwargs, zorder=2)
+                                    # Draw main road line
+                                    line = ax.plot([x[0] for x in refs], [x[1] for x in refs],
+                                                  color=color_value, lw=line_width, alpha=road_transparency, zorder=2)
+                                    
+                                    # Apply enhanced styling using set methods
+                                    if enhanced_styling:
+                                        line[0].set_solid_capstyle('round')
+                                        line[0].set_solid_joinstyle('round')
                                     
                                     roads_plotted += 1
+                                    
+                                    # ===== LABEL HANDLING =====
+                                    if show_labels and name:
+                                        should_label = False
+                                        major_road_types = ['motorway', 'trunk', 'primary', 'secondary']
+                                        
+                                        if label_density == "Ultra Minimal (Motorways only)":
+                                            should_label = highway_type == 'motorway'
+                                        elif label_density == "Minimal (Major roads only)":
+                                            should_label = highway_type in major_road_types
+                                        elif label_density == "Medium (Top 25%)":
+                                            percentile_threshold = np.percentile(hot_emission[filtered_mask], 75)
+                                            should_label = (highway_type in major_road_types or 
+                                                          current_emission >= percentile_threshold)
+                                        elif label_density == "High (Top 50%)":
+                                            percentile_threshold = np.percentile(hot_emission[filtered_mask], 50)
+                                            should_label = (highway_type in major_road_types or 
+                                                          current_emission >= percentile_threshold)
+                                        else:  # Maximum
+                                            should_label = True
+                                        
+                                        if should_label:
+                                            center_index = len(refs) // 2
+                                            x_center = refs[center_index][0]
+                                            y_center = refs[center_index][1]
+                                            
+                                            too_close = False
+                                            if name in labeled_roads:
+                                                for prev_x, prev_y in labeled_roads[name]:
+                                                    distance = np.sqrt((x_center - prev_x)**2 + (y_center - prev_y)**2)
+                                                    if distance < min_label_distance:
+                                                        too_close = True
+                                                        break
+                                            
+                                            if not too_close:
+                                                angle = 0
+                                                if rotate_labels and len(refs) > 1:
+                                                    dx = refs[min(center_index + 1, len(refs) - 1)][0] - refs[max(center_index - 1, 0)][0]
+                                                    dy = refs[min(center_index + 1, len(refs) - 1)][1] - refs[max(center_index - 1, 0)][1]
+                                                    angle = np.degrees(np.arctan2(dy, dx))
+                                                    if angle > 90:
+                                                        angle -= 180
+                                                    elif angle < -90:
+                                                        angle += 180
+                                                
+                                                ax.text(
+                                                    x_center, y_center, str(name),
+                                                    fontsize=label_font_size,
+                                                    color=label_color,
+                                                    ha='center',
+                                                    va='center',
+                                                    rotation=angle,
+                                                    rotation_mode='anchor',
+                                                    bbox=dict(
+                                                        facecolor=label_bg_color,
+                                                        alpha=label_bg_opacity,
+                                                        edgecolor='gray',
+                                                        linewidth=0.5,
+                                                        boxstyle='round,pad=0.3'
+                                                    ),
+                                                    zorder=100
+                                                )
+                                                
+                                                if name not in labeled_roads:
+                                                    labeled_roads[name] = []
+                                                labeled_roads[name].append((x_center, y_center))
+                                
+                                elif show_roads_without_data and (i is None or not filtered_mask[i]):
+                                    ax.plot(
+                                        [x[0] for x in refs], [x[1] for x in refs],
+                                        color=no_data_color,
+                                        lw=no_data_width,
+                                        alpha=no_data_transparency,
+                                        zorder=0
+                                    )
+                                    roads_without_data += 1
                                     
                                     # ===== LABEL HANDLING =====
                                     if show_labels and name:
