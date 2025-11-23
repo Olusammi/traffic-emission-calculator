@@ -732,7 +732,15 @@ with tab4:
                             "VOC": cop.pollutant_VOC,
                             "FC": cop.pollutant_FC
                         }
+                        # Add after line: emissions_data[poll] = {'pc': ..., 'total': ...}
 
+                        # Also track fuel-specific emissions
+                        fuel_emissions_data = {}
+                        for poll in selected_pollutants:
+                            fuel_emissions_data[poll] = {
+                                'gasoline': np.zeros((Nlink,), dtype=float),
+                                'diesel': np.zeros((Nlink,), dtype=float)
+                            }
                         # Initialize with LDV and HDV arrays
                         for poll in selected_pollutants:
                             emissions_data[poll] = {
@@ -885,7 +893,19 @@ with tab4:
                                                 pc_fleet_share = data_copert_class_gasoline[i, c] if t == 0 else data_copert_class_diesel[i, c]
                                                 e *= engine_type_distribution[t] * engine_capacity_distribution[t][k] * pc_fleet_share
                         
-                                                emissions_data[poll_name]['pc'][i] += e * p_passenger / link_length * link_flow
+                                                #emissions_data[poll_name]['pc'][i] += e * p_passenger / link_length * link_flow
+                                # Calculate once and store in variable
+                                                final_e = e * p_passenger / link_length * link_flow
+                                                
+                                                # Add to PC total
+                                                emissions_data[poll_name]['pc'][i] += final_e
+                                                
+                                                # Track by fuel type
+                                                if 'fuel_emissions_data' in locals():
+                                                    if t == 0:  # Gasoline
+                                                        fuel_emissions_data[poll_name]['gasoline'][i] += final_e
+                                                    else:  # Diesel
+                                                        fuel_emissions_data[poll_name]['diesel'][i] += final_e
                                 except Exception:
                                     # if PC block wholly fails, skip but continue
                                     pass
@@ -931,7 +951,17 @@ with tab4:
                                                     ldv_fleet_share = data_copert_class_ldv[i, c]
                                                     e_ldv *= engine_type_distribution[t] * engine_capacity_distribution[t][k] * ldv_fleet_share
                         
-                                                    emissions_data[poll_name]['ldv'][i] += e_ldv * P_ldv_i / link_length * link_flow
+                                                    #emissions_data[poll_name]['ldv'][i] += e_ldv * P_ldv_i / link_length * link_flow
+                                                    final_e_ldv = e_ldv * P_ldv_i / link_length * link_flow
+                                                    emissions_data[poll_name]['ldv'][i] += final_e_ldv
+                                                    
+                                                    # Track fuel-specific emissions
+                                                    if 'fuel_emissions_data' in locals():
+                                                        if t == 0:  # Gasoline
+                                                            fuel_emissions_data[poll_name]['gasoline'][i] += final_e_ldv
+                                                        else:  # Diesel
+                                                            fuel_emissions_data[poll_name]['diesel'][i] += final_e_ldv
+                                                    # === END NEW SECTION ===
                                     except Exception:
                                         pass
                         
@@ -967,6 +997,9 @@ with tab4:
                         
                                                 e_hdv *= hdv_fleet_share
                                                 emissions_data[poll_name]['hdv'][i] += e_hdv * P_hdv_i / link_length * link_flow
+                                                # ADD:
+                                                if 'fuel_emissions_data' in locals():
+                                                    fuel_emissions_data[poll_name]['diesel'][i] += e_hdv * P_hdv_i / link_length * link_flow
                                     except Exception:
                                         pass
                         
@@ -975,7 +1008,7 @@ with tab4:
                                     for m in range(2):
                                         for d in range(Mclass):
                                             # preserve your skip condition for certain euro classes
-                                            if m == 1 and copert_class_motorcycle[d] in range(cop.class_moto_Conventional, 1 + cop.class_moto_Euro_5):
+                                            if m == 0 and copert_class_motorcycle[d] >= cop.class_moto_Euro_1:
                                                 continue
                                             try:
                                                 # Use poll_type (current pollutant) here, not a fixed pollutant
@@ -989,6 +1022,9 @@ with tab4:
                                 
                                             # ORIGINAL SCALING used in your working script — do NOT multiply by link_length
                                             emissions_data[poll_name]['moto'][i] += e_f * P_motorcycle * link_flow
+                                            # ADD:
+                                            if 'fuel_emissions_data' in locals():
+                                                fuel_emissions_data[poll_name]['gasoline'][i] += e_f * P_motorcycle * link_flow
                                 except Exception:
                                     # keep the app running even if motorcycle EF call fails for one pollutant/link
                                     pass
@@ -1013,6 +1049,8 @@ with tab4:
                         # FINAL RESULTS HANDLING
                         # Store data in session state for cross-tab use
                         st.session_state.emissions_data = emissions_data
+                        # After: st.session_state.emissions_data = emissions_data
+                        st.session_state.fuel_emissions_data = fuel_emissions_data
                         st.session_state.data_link = data_link
                         st.session_state.selected_pollutants = selected_pollutants
                         st.success("✅ Multi-pollutant emissions calculated successfully!")
@@ -1072,16 +1110,136 @@ with tab4:
     else:
         st.info("Please ensure all required files and at least one pollutant are selected to run the calculation.")
 
-# ==================== TAB 5: MULTI-METRIC ANALYSIS ====================
+# ==================== TAB 5: MULTI-METRIC ANALYSIS (ENHANCED) ====================
 with tab5:
     st.header("📈 Multi-Metric Emission Analysis")
-    st.markdown("Compare emissions across different pollutants and vehicle types.")
+    st.markdown("Compare emissions across different pollutants, vehicle types, and fuel types.")
 
     if 'emissions_data' in st.session_state:
         emissions_data = st.session_state.emissions_data
         selected_pollutants = st.session_state.selected_pollutants
+        data_link = st.session_state.data_link
 
         if selected_pollutants:
+            # ===== NEW: FUEL TYPE BREAKDOWN SECTION =====
+            st.subheader("⛽ Emissions by Fuel Type")
+            st.markdown("Breakdown of emissions by gasoline vs diesel vehicles")
+            
+            # Calculate fuel type proportions from link data
+            gasoline_prop_avg = data_link[:, 4].mean()
+            diesel_prop_avg = 1 - gasoline_prop_avg
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Average Gasoline Proportion", f"{gasoline_prop_avg*100:.1f}%")
+            with col2:
+                st.metric("Average Diesel Proportion", f"{diesel_prop_avg*100:.1f}%")
+            
+            # Select pollutant for fuel type analysis
+            fuel_analysis_pollutant = st.selectbox(
+                "Select Pollutant for Fuel Type Analysis",
+                options=selected_pollutants,
+                key='fuel_analysis_select'
+            )
+            
+            # Calculate emissions by fuel type for PC and LDV
+            # Note: We'll estimate based on proportions since we don't store fuel-specific emissions
+            fuel_type_data = []
+            
+            for poll in selected_pollutants:
+                # For PC: split by gasoline/diesel proportion
+                pc_total = emissions_data[poll]['pc'].sum()
+                pc_gasoline_estimate = pc_total * gasoline_prop_avg
+                pc_diesel_estimate = pc_total * diesel_prop_avg
+                
+                # For LDV: split by gasoline/diesel proportion
+                ldv_total = emissions_data[poll]['ldv'].sum()
+                ldv_gasoline_estimate = ldv_total * gasoline_prop_avg
+                ldv_diesel_estimate = ldv_total * diesel_prop_avg
+                
+                # HDV: Typically 100% diesel
+                hdv_total = emissions_data[poll]['hdv'].sum()
+                
+                # Motorcycles: Typically 100% gasoline
+                moto_total = emissions_data[poll]['moto'].sum()
+                
+                # Total by fuel type
+                total_gasoline = pc_gasoline_estimate + ldv_gasoline_estimate + moto_total
+                total_diesel = pc_diesel_estimate + ldv_diesel_estimate + hdv_total
+                
+                fuel_type_data.append({
+                    'Pollutant': poll,
+                    'Fuel_Type': 'Gasoline',
+                    'Total_Emissions': total_gasoline,
+                    'Percentage': total_gasoline / (total_gasoline + total_diesel) * 100
+                })
+                fuel_type_data.append({
+                    'Pollutant': poll,
+                    'Fuel_Type': 'Diesel',
+                    'Total_Emissions': total_diesel,
+                    'Percentage': total_diesel / (total_gasoline + total_diesel) * 100
+                })
+            
+            fuel_type_df = pd.DataFrame(fuel_type_data)
+            
+            # Create visualizations
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Pie chart for selected pollutant
+                fuel_selected_df = fuel_type_df[fuel_type_df['Pollutant'] == fuel_analysis_pollutant]
+                fig_pie = px.pie(
+                    fuel_selected_df,
+                    values='Total_Emissions',
+                    names='Fuel_Type',
+                    title=f"{fuel_analysis_pollutant} Emissions by Fuel Type",
+                    color='Fuel_Type',
+                    color_discrete_map={'Gasoline': '#ff6b6b', 'Diesel': '#4dabf7'},
+                    hole=0.4
+                )
+                fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+                st.plotly_chart(fig_pie, use_container_width=True)
+            
+            with col2:
+                # Bar chart comparing all pollutants
+                fig_fuel_bar = px.bar(
+                    fuel_type_df,
+                    x='Pollutant',
+                    y='Total_Emissions',
+                    color='Fuel_Type',
+                    title="All Pollutants: Gasoline vs Diesel",
+                    labels={'Total_Emissions': 'Total Emissions'},
+                    color_discrete_map={'Gasoline': '#ff6b6b', 'Diesel': '#4dabf7'},
+                    barmode='group',
+                    template="plotly_white"
+                )
+                st.plotly_chart(fig_fuel_bar, use_container_width=True)
+            
+            # Detailed table
+            st.markdown("**Detailed Fuel Type Breakdown**")
+            fuel_summary = []
+            for poll in selected_pollutants:
+                poll_fuel_data = fuel_type_df[fuel_type_df['Pollutant'] == poll]
+                gasoline_data = poll_fuel_data[poll_fuel_data['Fuel_Type'] == 'Gasoline'].iloc[0]
+                diesel_data = poll_fuel_data[poll_fuel_data['Fuel_Type'] == 'Diesel'].iloc[0]
+                
+                fuel_summary.append({
+                    'Pollutant': poll,
+                    'Gasoline Emissions': f"{gasoline_data['Total_Emissions']:.2f}",
+                    'Gasoline %': f"{gasoline_data['Percentage']:.1f}%",
+                    'Diesel Emissions': f"{diesel_data['Total_Emissions']:.2f}",
+                    'Diesel %': f"{diesel_data['Percentage']:.1f}%",
+                    'Unit': pollutants_available[poll]['unit']
+                })
+            
+            fuel_summary_df = pd.DataFrame(fuel_summary)
+            st.dataframe(fuel_summary_df, use_container_width=True)
+            
+            st.markdown("---")
+            
+            # ===== EXISTING: VEHICLE TYPE BREAKDOWN SECTION =====
+            st.subheader("🚗 Emissions by Vehicle Type")
+            
             # Prepare data for breakdown chart
             breakdown_data = []
             for poll in selected_pollutants:
@@ -1109,7 +1267,6 @@ with tab5:
             breakdown_df = pd.DataFrame(breakdown_data)
             
             # --- Vehicle Type Breakdown Chart ---
-            st.subheader("Vehicle Type Breakdown by Pollutant")
             fig_breakdown = px.bar(breakdown_df, 
                                    x='Pollutant', 
                                    y='Total_Emissions', 
@@ -1120,20 +1277,41 @@ with tab5:
                                    template="plotly_white")
             st.plotly_chart(fig_breakdown, use_container_width=True)
             
+            # Pie chart for vehicle type distribution of selected pollutant
+            vehicle_analysis_pollutant = st.selectbox(
+                "Select Pollutant for Vehicle Type Pie Chart",
+                options=selected_pollutants,
+                key='vehicle_pie_select'
+            )
+            
+            vehicle_selected_df = breakdown_df[breakdown_df['Pollutant'] == vehicle_analysis_pollutant]
+            fig_vehicle_pie = px.pie(
+                vehicle_selected_df,
+                values='Total_Emissions',
+                names='Vehicle_Type',
+                title=f"{vehicle_analysis_pollutant} Emissions by Vehicle Type",
+                color='Vehicle_Type',
+                color_discrete_map={
+                    'PC': '#667eea',
+                    'LDV': '#f59e0b',
+                    'HDV': '#ef4444',
+                    'Motorcycle': '#10b981'
+                },
+                hole=0.4
+            )
+            fig_vehicle_pie.update_traces(textposition='inside', textinfo='percent+label')
+            st.plotly_chart(fig_vehicle_pie, use_container_width=True)
 
             st.markdown("---")
             
-            # --- Link-by-Link Total Comparison ---
-            st.subheader("Top 10 Links by Total Emission")
+            # ===== EXISTING: LINK RANKING SECTION =====
+            st.subheader("🔝 Top 10 Links by Total Emission")
             
-            # Select which pollutant to rank by
             ranking_pollutant = st.selectbox("Select Pollutant to Rank by", options=selected_pollutants)
 
             if ranking_pollutant in emissions_data:
-                # Combine link data with total emissions for the ranking pollutant
                 ranking_data = st.session_state.data_link.copy()
                 
-                # Check column count and assign names
                 if ranking_data.shape[1] == 7:
                     ranking_data = pd.DataFrame(ranking_data, columns=['OSM_ID', 'Length_km', 'Flow', 'Speed', 'Gasoline_Prop', 'PC_Prop', '4Stroke_Prop'])
                 elif ranking_data.shape[1] == 9:
@@ -1141,10 +1319,7 @@ with tab5:
                 
                 ranking_data[f'Total_{ranking_pollutant}'] = emissions_data[ranking_pollutant]['total']
 
-                # Sort and take top 10
                 top_10_df = ranking_data.sort_values(by=f'Total_{ranking_pollutant}', ascending=False).head(10)
-                
-                # Convert OSM_ID to integer for better display
                 top_10_df['OSM_ID'] = top_10_df['OSM_ID'].astype(int)
 
                 st.dataframe(top_10_df[['OSM_ID', 'Length_km', 'Flow', 'Speed', f'Total_{ranking_pollutant}']], use_container_width=True)
@@ -1159,6 +1334,45 @@ with tab5:
                 st.plotly_chart(fig_top_10, use_container_width=True)
             else:
                 st.warning("Please select a pollutant that has been calculated.")
+            
+            # ===== NEW: COMPARATIVE INSIGHTS SECTION =====
+            st.markdown("---")
+            st.subheader("💡 Comparative Insights")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**🔍 Key Findings:**")
+                
+                # Find dominant vehicle type
+                for poll in selected_pollutants:
+                    pc = emissions_data[poll]['pc'].sum()
+                    ldv = emissions_data[poll]['ldv'].sum()
+                    hdv = emissions_data[poll]['hdv'].sum()
+                    moto = emissions_data[poll]['moto'].sum()
+                    
+                    vehicle_totals = {'PC': pc, 'LDV': ldv, 'HDV': hdv, 'Motorcycle': moto}
+                    dominant_vehicle = max(vehicle_totals, key=vehicle_totals.get)
+                    dominant_percentage = (vehicle_totals[dominant_vehicle] / sum(vehicle_totals.values())) * 100
+                    
+                    st.markdown(f"""
+                    **{poll}**: {dominant_vehicle} contributes **{dominant_percentage:.1f}%** of total emissions
+                    """)
+            
+            with col2:
+                st.markdown("**⛽ Fuel Type Insights:**")
+                
+                for poll in selected_pollutants:
+                    poll_fuel_data = fuel_type_df[fuel_type_df['Pollutant'] == poll]
+                    gasoline_pct = poll_fuel_data[poll_fuel_data['Fuel_Type'] == 'Gasoline']['Percentage'].iloc[0]
+                    diesel_pct = poll_fuel_data[poll_fuel_data['Fuel_Type'] == 'Diesel']['Percentage'].iloc[0]
+                    
+                    dominant_fuel = 'Gasoline' if gasoline_pct > diesel_pct else 'Diesel'
+                    dominant_fuel_pct = max(gasoline_pct, diesel_pct)
+                    
+                    st.markdown(f"""
+                    **{poll}**: {dominant_fuel} vehicles contribute **{dominant_fuel_pct:.1f}%**
+                    """)
 
         else:
             st.info("No pollutants selected for analysis.")
@@ -1589,6 +1803,13 @@ with tab7:
                 with zipfile.ZipFile(buffer, 'w') as zipf:
                     # 1. Full Results CSV
                     zipf.writestr('full_link_results.csv', final_results_df.to_csv(index=False))
+        # In TAB 7, after creating final_results_df, ADD:
+
+        if 'fuel_emissions_data' in st.session_state:
+            fuel_emissions = st.session_state.fuel_emissions_data
+            for poll in selected_pollutants:
+                final_results_df[f'{poll}_Gasoline'] = fuel_emissions[poll]['gasoline']
+                final_results_df[f'{poll}_Diesel'] = fuel_emissions[poll]['diesel']
 
                     # 2. Statistics Summary CSV
                     summary_data = []
