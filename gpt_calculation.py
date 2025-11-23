@@ -1813,18 +1813,18 @@ with tab7:
 
                     # 2. Statistics Summary CSV
                 summary_data = []
-                    for poll in selected_pollutants:
-                        summary_data.append({
-                            'Pollutant': poll,
-                            'Total PC': emissions_data[poll]['pc'].sum(),
-                            'Total LDV': emissions_data[poll]['ldv'].sum(),
-                            'Total HDV': emissions_data[poll]['hdv'].sum(),
-                            'Total Moto': emissions_data[poll]['moto'].sum(),
-                            'Grand Total': emissions_data[poll]['total'].sum(),
-                            'Unit': pollutants_available[poll]['unit']
-                        })
-                    summary_df = pd.DataFrame(summary_data)
-                    zipf.writestr('statistics_summary.csv', summary_df.to_csv(index=False))
+                for poll in selected_pollutants:
+                    summary_data.append({
+                        'Pollutant': poll,
+                        'Total PC': emissions_data[poll]['pc'].sum(),
+                        'Total LDV': emissions_data[poll]['ldv'].sum(),
+                        'Total HDV': emissions_data[poll]['hdv'].sum(),
+                        'Total Moto': emissions_data[poll]['moto'].sum(),
+                        'Grand Total': emissions_data[poll]['total'].sum(),
+                        'Unit': pollutants_available[poll]['unit']
+                    })
+                summary_df = pd.DataFrame(summary_data)
+                zipf.writestr('statistics_summary.csv', summary_df.to_csv(index=False))
 
                     # 3. Text Report
                     report_text = f"""
