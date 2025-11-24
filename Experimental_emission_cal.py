@@ -40,7 +40,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🚗 Advanced Traffic Emission Calculator")
+st.title("Vehicle Emission Calculator")
 st.caption("Multi-Standard Emission Analysis with COPERT IV, IPCC, and EPA Methodologies")
 st.markdown("---")
 
@@ -115,6 +115,87 @@ else:
 st.sidebar.markdown("---")
 st.sidebar.info("💡 **Pro Tip**: Enable all accuracy settings for research-grade calculations")
 
+# ==================== UNIT CONVERSION SETTINGS ====================
+st.sidebar.markdown("---")
+st.sidebar.header("📏 Unit Conversion")
+st.sidebar.markdown("Convert emission results to different units")
+
+# Unit conversion options for different pollutants
+unit_conversion_options = {
+    "CO": {
+        "g/km": {"name": "Grams per kilometer", "factor": 1.0},
+        "kg/km": {"name": "Kilograms per kilometer", "factor": 0.001},
+        "tonnes/km": {"name": "Tonnes per kilometer", "factor": 0.000001},
+        "g/mile": {"name": "Grams per mile", "factor": 1.60934},
+        "kg/year": {"name": "Kilograms per year (avg)", "factor": 1.0, "note": "Requires trip frequency"}
+    },
+    "CO2": {
+        "g/km": {"name": "Grams per kilometer", "factor": 1.0},
+        "kg/km": {"name": "Kilograms per kilometer", "factor": 0.001},
+        "tonnes/km": {"name": "Tonnes per kilometer", "factor": 0.000001},
+        "kg CO2e/km": {"name": "kg CO2 equivalent per km", "factor": 0.001},
+        "tonnes CO2e/year": {"name": "Tonnes CO2e per year", "factor": 1.0, "note": "Requires annual distance"},
+        "g/mile": {"name": "Grams per mile", "factor": 1.60934}
+    },
+    "NOx": {
+        "g/km": {"name": "Grams per kilometer", "factor": 1.0},
+        "kg/km": {"name": "Kilograms per kilometer", "factor": 0.001},
+        "mg/km": {"name": "Milligrams per kilometer", "factor": 1000.0},
+        "g/mile": {"name": "Grams per mile", "factor": 1.60934},
+        "kg NO2e/km": {"name": "kg NO2 equivalent per km", "factor": 0.001}
+    },
+    "PM": {
+        "mg/km": {"name": "Milligrams per kilometer", "factor": 1.0},
+        "g/km": {"name": "Grams per kilometer", "factor": 0.001},
+        "kg/km": {"name": "Kilograms per kilometer", "factor": 0.000001},
+        "µg/km": {"name": "Micrograms per kilometer", "factor": 1000.0},
+        "mg/mile": {"name": "Milligrams per mile", "factor": 1.60934}
+    },
+    "VOC": {
+        "g/km": {"name": "Grams per kilometer", "factor": 1.0},
+        "kg/km": {"name": "Kilograms per kilometer", "factor": 0.001},
+        "mg/km": {"name": "Milligrams per kilometer", "factor": 1000.0},
+        "g/mile": {"name": "Grams per mile", "factor": 1.60934}
+    },
+    "FC": {
+        "L/100km": {"name": "Liters per 100 km", "factor": 1.0},
+        "L/km": {"name": "Liters per km", "factor": 0.01},
+        "gal/100mi": {"name": "Gallons per 100 miles (US)", "factor": 2.3521},
+        "mpg": {"name": "Miles per gallon (US)", "factor": 1.0, "note": "Inverse calculation"},
+        "km/L": {"name": "Kilometers per liter", "factor": 1.0, "note": "Inverse calculation"}
+    }
+}
+
+# Store selected units for each pollutant
+selected_units = {}
+for poll in pollutants_available.keys():
+    if poll in unit_conversion_options:
+        default_unit = list(unit_conversion_options[poll].keys())[0]
+        selected_unit = st.sidebar.selectbox(
+            f"{poll} Display Unit",
+            options=list(unit_conversion_options[poll].keys()),
+            format_func=lambda x, p=poll: f"{x} - {unit_conversion_options[p][x]['name']}",
+            key=f"unit_{poll}"
+        )
+        selected_units[poll] = selected_unit
+    else:
+        selected_units[poll] = pollutants_available[poll]['unit']
+
+# Store in session state for access across tabs
+st.session_state.selected_units = selected_units
+st.session_state.unit_conversion_options = unit_conversion_options
+
+# Show conversion info
+if st.sidebar.checkbox("Show Conversion Info", value=False):
+    st.sidebar.markdown("**Conversion Notes:**")
+    st.sidebar.info("""
+    - **CO2e**: CO2 equivalent includes global warming potential
+    - **Annual calculations**: Based on average 15,000 km/year
+    - **Mile conversions**: 1 mile = 1.60934 km
+    - **Inverse units** (mpg, km/L): Calculated as reciprocal
+    """)
+
+st.sidebar.markdown("---")
 # ==================== FILE UPLOADS ====================
 st.sidebar.header("📂 Upload Input Files")
 copert_files = st.sidebar.expander("COPERT Parameter Files", expanded=True)
@@ -167,6 +248,67 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "🗺️ Interactive Map",
     "📥 Download Results"
 ])
+
+# ==================== UNIT CONVERSION FUNCTION ====================
+def convert_emission_value(value, pollutant, from_unit, to_unit, distance_km=None):
+    """
+    Convert emission values between different units
+    
+    Args:
+        value: Original emission value
+        pollutant: Pollutant type (CO, CO2, NOx, etc.)
+        from_unit: Original unit
+        to_unit: Target unit
+        distance_km: Optional distance for annual calculations
+    
+    Returns:
+        Converted value
+    """
+    if from_unit == to_unit:
+        return value
+    
+    if pollutant not in unit_conversion_options:
+        return value
+    
+    conversions = unit_conversion_options[pollutant]
+    
+    if to_unit not in conversions:
+        return value
+    
+    # Handle inverse calculations (mpg, km/L)
+    if to_unit in ["mpg", "km/L"]:
+        if value == 0:
+            return 0
+        if to_unit == "mpg":
+            # Convert L/100km to mpg
+            return 235.214 / value if value != 0 else 0
+        elif to_unit == "km/L":
+            # Convert L/100km to km/L
+            return 100 / value if value != 0 else 0
+    
+    # Handle annual conversions
+    if "year" in to_unit:
+        annual_distance = distance_km if distance_km else 15000  # Default 15,000 km/year
+        base_value = value * conversions[to_unit]["factor"]
+        return base_value * annual_distance
+    
+    # Standard conversion
+    return value * conversions[to_unit]["factor"]
+
+def format_emission_value(value, unit):
+    """Format emission value based on magnitude"""
+    if value == 0:
+        return "0.00"
+    elif value < 0.001:
+        return f"{value:.6f}"
+    elif value < 0.1:
+        return f"{value:.4f}"
+    elif value < 10:
+        return f"{value:.3f}"
+    elif value < 1000:
+        return f"{value:.2f}"
+    else:
+        return f"{value:.1f}"
 
 # ==================== TAB 1: INSTRUCTIONS ====================
 with tab1:
@@ -732,7 +874,15 @@ with tab4:
                             "VOC": cop.pollutant_VOC,
                             "FC": cop.pollutant_FC
                         }
+                        # Add after line: emissions_data[poll] = {'pc': ..., 'total': ...}
 
+                        # Also track fuel-specific emissions
+                        fuel_emissions_data = {}
+                        for poll in selected_pollutants:
+                            fuel_emissions_data[poll] = {
+                                'gasoline': np.zeros((Nlink,), dtype=float),
+                                'diesel': np.zeros((Nlink,), dtype=float)
+                            }
                         # Initialize with LDV and HDV arrays
                         for poll in selected_pollutants:
                             emissions_data[poll] = {
@@ -885,7 +1035,19 @@ with tab4:
                                                 pc_fleet_share = data_copert_class_gasoline[i, c] if t == 0 else data_copert_class_diesel[i, c]
                                                 e *= engine_type_distribution[t] * engine_capacity_distribution[t][k] * pc_fleet_share
                         
-                                                emissions_data[poll_name]['pc'][i] += e * p_passenger / link_length * link_flow
+                                                #emissions_data[poll_name]['pc'][i] += e * p_passenger / link_length * link_flow
+                                # Calculate once and store in variable
+                                                final_e = e * p_passenger / link_length * link_flow
+                                                
+                                                # Add to PC total
+                                                emissions_data[poll_name]['pc'][i] += final_e
+                                                
+                                                # Track by fuel type
+                                                if 'fuel_emissions_data' in locals():
+                                                    if t == 0:  # Gasoline
+                                                        fuel_emissions_data[poll_name]['gasoline'][i] += final_e
+                                                    else:  # Diesel
+                                                        fuel_emissions_data[poll_name]['diesel'][i] += final_e
                                 except Exception:
                                     # if PC block wholly fails, skip but continue
                                     pass
@@ -931,7 +1093,17 @@ with tab4:
                                                     ldv_fleet_share = data_copert_class_ldv[i, c]
                                                     e_ldv *= engine_type_distribution[t] * engine_capacity_distribution[t][k] * ldv_fleet_share
                         
-                                                    emissions_data[poll_name]['ldv'][i] += e_ldv * P_ldv_i / link_length * link_flow
+                                                    #emissions_data[poll_name]['ldv'][i] += e_ldv * P_ldv_i / link_length * link_flow
+                                                    final_e_ldv = e_ldv * P_ldv_i / link_length * link_flow
+                                                    emissions_data[poll_name]['ldv'][i] += final_e_ldv
+                                                    
+                                                    # Track fuel-specific emissions
+                                                    if 'fuel_emissions_data' in locals():
+                                                        if t == 0:  # Gasoline
+                                                            fuel_emissions_data[poll_name]['gasoline'][i] += final_e_ldv
+                                                        else:  # Diesel
+                                                            fuel_emissions_data[poll_name]['diesel'][i] += final_e_ldv
+                                                    # === END NEW SECTION ===
                                     except Exception:
                                         pass
                         
@@ -967,6 +1139,9 @@ with tab4:
                         
                                                 e_hdv *= hdv_fleet_share
                                                 emissions_data[poll_name]['hdv'][i] += e_hdv * P_hdv_i / link_length * link_flow
+                                                # ADD:
+                                                if 'fuel_emissions_data' in locals():
+                                                    fuel_emissions_data[poll_name]['diesel'][i] += e_hdv * P_hdv_i / link_length * link_flow
                                     except Exception:
                                         pass
                         
@@ -975,7 +1150,7 @@ with tab4:
                                     for m in range(2):
                                         for d in range(Mclass):
                                             # preserve your skip condition for certain euro classes
-                                            if m == 1 and copert_class_motorcycle[d] in range(cop.class_moto_Conventional, 1 + cop.class_moto_Euro_5):
+                                            if m == 0 and copert_class_motorcycle[d] >= cop.class_moto_Euro_1:
                                                 continue
                                             try:
                                                 # Use poll_type (current pollutant) here, not a fixed pollutant
@@ -989,6 +1164,9 @@ with tab4:
                                 
                                             # ORIGINAL SCALING used in your working script — do NOT multiply by link_length
                                             emissions_data[poll_name]['moto'][i] += e_f * P_motorcycle * link_flow
+                                            # ADD:
+                                            if 'fuel_emissions_data' in locals():
+                                                fuel_emissions_data[poll_name]['gasoline'][i] += e_f * P_motorcycle * link_flow
                                 except Exception:
                                     # keep the app running even if motorcycle EF call fails for one pollutant/link
                                     pass
@@ -1013,29 +1191,66 @@ with tab4:
                         # FINAL RESULTS HANDLING
                         # Store data in session state for cross-tab use
                         st.session_state.emissions_data = emissions_data
+                        # After: st.session_state.emissions_data = emissions_data
+                        st.session_state.fuel_emissions_data = fuel_emissions_data
                         st.session_state.data_link = data_link
                         st.session_state.selected_pollutants = selected_pollutants
                         st.success("✅ Multi-pollutant emissions calculated successfully!")
 
                         # Display results summary
                         st.subheader("📊 Emission Summary")
-                        # Create summary dataframe with LDV and HDV
+                        
+                        # Get selected units
+                        selected_units = st.session_state.get('selected_units', {})
+                        unit_conversion_options = st.session_state.get('unit_conversion_options', {})
+                        
+                        # Create summary dataframe with converted units
                         summary_data = []
                         for poll in selected_pollutants:
+                            target_unit = selected_units.get(poll, pollutants_available[poll]['unit'])
+                            original_unit = pollutants_available[poll]['unit']
+                            
+                            # Convert values
+                            total_pc_converted = convert_emission_value(
+                                emissions_data[poll]['pc'].sum(), poll, original_unit, target_unit
+                            )
+                            total_ldv_converted = convert_emission_value(
+                                emissions_data[poll]['ldv'].sum(), poll, original_unit, target_unit
+                            )
+                            total_hdv_converted = convert_emission_value(
+                                emissions_data[poll]['hdv'].sum(), poll, original_unit, target_unit
+                            )
+                            total_moto_converted = convert_emission_value(
+                                emissions_data[poll]['moto'].sum(), poll, original_unit, target_unit
+                            )
+                            total_converted = convert_emission_value(
+                                emissions_data[poll]['total'].sum(), poll, original_unit, target_unit
+                            )
+                            avg_converted = convert_emission_value(
+                                emissions_data[poll]['total'].mean(), poll, original_unit, target_unit
+                            )
+                            max_converted = convert_emission_value(
+                                emissions_data[poll]['total'].max(), poll, original_unit, target_unit
+                            )
+                            
                             summary_data.append({
                                 'Pollutant': poll,
-                                'Total PC': f"{emissions_data[poll]['pc'].sum():.2f}",
-                                'Total LDV': f"{emissions_data[poll]['ldv'].sum():.2f}",
-                                'Total HDV': f"{emissions_data[poll]['hdv'].sum():.2f}", 
-                                'Total Moto': f"{emissions_data[poll]['moto'].sum():.2f}",
-                                'Total': f"{emissions_data[poll]['total'].sum():.2f}",
-                                'Avg per Link': f"{emissions_data[poll]['total'].mean():.3f}",
-                                'Max': f"{emissions_data[poll]['total'].max():.2f}",
-                                'Unit': pollutants_available[poll]['unit']
+                                'Total PC': format_emission_value(total_pc_converted, target_unit),
+                                'Total LDV': format_emission_value(total_ldv_converted, target_unit),
+                                'Total HDV': format_emission_value(total_hdv_converted, target_unit),
+                                'Total Moto': format_emission_value(total_moto_converted, target_unit),
+                                'Total': format_emission_value(total_converted, target_unit),
+                                'Avg per Link': format_emission_value(avg_converted, target_unit),
+                                'Max': format_emission_value(max_converted, target_unit),
+                                'Unit': target_unit
                             })
-
+                        
                         summary_df = pd.DataFrame(summary_data)
                         st.dataframe(summary_df, use_container_width=True)
+                        
+                        # Show conversion notice if units were changed
+                        if any(selected_units.get(p) != pollutants_available[p]['unit'] for p in selected_pollutants):
+                            st.info("ℹ️ Values have been converted to your selected display units")
 
                         # Detailed results by pollutant
                         for poll in selected_pollutants:
@@ -1072,16 +1287,153 @@ with tab4:
     else:
         st.info("Please ensure all required files and at least one pollutant are selected to run the calculation.")
 
-# ==================== TAB 5: MULTI-METRIC ANALYSIS ====================
+# ==================== TAB 5: MULTI-METRIC ANALYSIS (ENHANCED) ====================
 with tab5:
     st.header("📈 Multi-Metric Emission Analysis")
-    st.markdown("Compare emissions across different pollutants and vehicle types.")
+    st.markdown("Compare emissions across different pollutants, vehicle types, and fuel types.")
 
     if 'emissions_data' in st.session_state:
         emissions_data = st.session_state.emissions_data
         selected_pollutants = st.session_state.selected_pollutants
+        data_link = st.session_state.data_link
+
+                    # ADD UNIT DISPLAY TOGGLE
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown("Select analysis views below")
+        with col2:
+            use_converted_units = st.checkbox("Use Converted Units", value=True, 
+                                             help="Display values in your selected units from sidebar")
 
         if selected_pollutants:
+            # ===== NEW: FUEL TYPE BREAKDOWN SECTION =====
+            st.subheader("⛽ Emissions by Fuel Type")
+            st.markdown("Breakdown of emissions by gasoline vs diesel vehicles")
+            
+            # Calculate fuel type proportions from link data
+            gasoline_prop_avg = data_link[:, 4].mean()
+            diesel_prop_avg = 1 - gasoline_prop_avg
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Average Gasoline Proportion", f"{gasoline_prop_avg*100:.1f}%")
+            with col2:
+                st.metric("Average Diesel Proportion", f"{diesel_prop_avg*100:.1f}%")
+
+            for poll in selected_pollutants:
+                pc_total = emissions_data[poll]['pc'].sum()
+                
+                if use_converted_units:
+                    selected_units = st.session_state.get('selected_units', {})
+                    target_unit = selected_units.get(poll, pollutants_available[poll]['unit'])
+                    original_unit = pollutants_available[poll]['unit']
+                    pc_total = convert_emission_value(pc_total, poll, original_unit, target_unit)
+             
+            # Select pollutant for fuel type analysis
+            fuel_analysis_pollutant = st.selectbox(
+                "Select Pollutant for Fuel Type Analysis",
+                options=selected_pollutants,
+                key='fuel_analysis_select'
+            )
+            
+            # Calculate emissions by fuel type for PC and LDV
+            # Note: We'll estimate based on proportions since we don't store fuel-specific emissions
+            fuel_type_data = []
+            
+            for poll in selected_pollutants:
+                # For PC: split by gasoline/diesel proportion
+                pc_total = emissions_data[poll]['pc'].sum()
+                pc_gasoline_estimate = pc_total * gasoline_prop_avg
+                pc_diesel_estimate = pc_total * diesel_prop_avg
+                
+                # For LDV: split by gasoline/diesel proportion
+                ldv_total = emissions_data[poll]['ldv'].sum()
+                ldv_gasoline_estimate = ldv_total * gasoline_prop_avg
+                ldv_diesel_estimate = ldv_total * diesel_prop_avg
+                
+                # HDV: Typically 100% diesel
+                hdv_total = emissions_data[poll]['hdv'].sum()
+                
+                # Motorcycles: Typically 100% gasoline
+                moto_total = emissions_data[poll]['moto'].sum()
+                
+                # Total by fuel type
+                total_gasoline = pc_gasoline_estimate + ldv_gasoline_estimate + moto_total
+                total_diesel = pc_diesel_estimate + ldv_diesel_estimate + hdv_total
+                
+                fuel_type_data.append({
+                    'Pollutant': poll,
+                    'Fuel_Type': 'Gasoline',
+                    'Total_Emissions': total_gasoline,
+                    'Percentage': total_gasoline / (total_gasoline + total_diesel) * 100
+                })
+                fuel_type_data.append({
+                    'Pollutant': poll,
+                    'Fuel_Type': 'Diesel',
+                    'Total_Emissions': total_diesel,
+                    'Percentage': total_diesel / (total_gasoline + total_diesel) * 100
+                })
+            
+            fuel_type_df = pd.DataFrame(fuel_type_data)
+            
+            # Create visualizations
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Pie chart for selected pollutant
+                fuel_selected_df = fuel_type_df[fuel_type_df['Pollutant'] == fuel_analysis_pollutant]
+                fig_pie = px.pie(
+                    fuel_selected_df,
+                    values='Total_Emissions',
+                    names='Fuel_Type',
+                    title=f"{fuel_analysis_pollutant} Emissions by Fuel Type",
+                    color='Fuel_Type',
+                    color_discrete_map={'Gasoline': '#ff6b6b', 'Diesel': '#4dabf7'},
+                    hole=0.4
+                )
+                fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+                st.plotly_chart(fig_pie, use_container_width=True)
+            
+            with col2:
+                # Bar chart comparing all pollutants
+                fig_fuel_bar = px.bar(
+                    fuel_type_df,
+                    x='Pollutant',
+                    y='Total_Emissions',
+                    color='Fuel_Type',
+                    title="All Pollutants: Gasoline vs Diesel",
+                    labels={'Total_Emissions': 'Total Emissions'},
+                    color_discrete_map={'Gasoline': '#ff6b6b', 'Diesel': '#4dabf7'},
+                    barmode='group',
+                    template="plotly_white"
+                )
+                st.plotly_chart(fig_fuel_bar, use_container_width=True)
+            
+            # Detailed table
+            st.markdown("**Detailed Fuel Type Breakdown**")
+            fuel_summary = []
+            for poll in selected_pollutants:
+                poll_fuel_data = fuel_type_df[fuel_type_df['Pollutant'] == poll]
+                gasoline_data = poll_fuel_data[poll_fuel_data['Fuel_Type'] == 'Gasoline'].iloc[0]
+                diesel_data = poll_fuel_data[poll_fuel_data['Fuel_Type'] == 'Diesel'].iloc[0]
+                
+                fuel_summary.append({
+                    'Pollutant': poll,
+                    'Gasoline Emissions': f"{gasoline_data['Total_Emissions']:.2f}",
+                    'Gasoline %': f"{gasoline_data['Percentage']:.1f}%",
+                    'Diesel Emissions': f"{diesel_data['Total_Emissions']:.2f}",
+                    'Diesel %': f"{diesel_data['Percentage']:.1f}%",
+                    'Unit': pollutants_available[poll]['unit']
+                })
+            
+            fuel_summary_df = pd.DataFrame(fuel_summary)
+            st.dataframe(fuel_summary_df, use_container_width=True)
+            
+            st.markdown("---")
+            
+            # ===== EXISTING: VEHICLE TYPE BREAKDOWN SECTION =====
+            st.subheader("🚗 Emissions by Vehicle Type")
+            
             # Prepare data for breakdown chart
             breakdown_data = []
             for poll in selected_pollutants:
@@ -1109,7 +1461,6 @@ with tab5:
             breakdown_df = pd.DataFrame(breakdown_data)
             
             # --- Vehicle Type Breakdown Chart ---
-            st.subheader("Vehicle Type Breakdown by Pollutant")
             fig_breakdown = px.bar(breakdown_df, 
                                    x='Pollutant', 
                                    y='Total_Emissions', 
@@ -1120,20 +1471,41 @@ with tab5:
                                    template="plotly_white")
             st.plotly_chart(fig_breakdown, use_container_width=True)
             
+            # Pie chart for vehicle type distribution of selected pollutant
+            vehicle_analysis_pollutant = st.selectbox(
+                "Select Pollutant for Vehicle Type Pie Chart",
+                options=selected_pollutants,
+                key='vehicle_pie_select'
+            )
+            
+            vehicle_selected_df = breakdown_df[breakdown_df['Pollutant'] == vehicle_analysis_pollutant]
+            fig_vehicle_pie = px.pie(
+                vehicle_selected_df,
+                values='Total_Emissions',
+                names='Vehicle_Type',
+                title=f"{vehicle_analysis_pollutant} Emissions by Vehicle Type",
+                color='Vehicle_Type',
+                color_discrete_map={
+                    'PC': '#667eea',
+                    'LDV': '#f59e0b',
+                    'HDV': '#ef4444',
+                    'Motorcycle': '#10b981'
+                },
+                hole=0.4
+            )
+            fig_vehicle_pie.update_traces(textposition='inside', textinfo='percent+label')
+            st.plotly_chart(fig_vehicle_pie, use_container_width=True)
 
             st.markdown("---")
             
-            # --- Link-by-Link Total Comparison ---
-            st.subheader("Top 10 Links by Total Emission")
+            # ===== EXISTING: LINK RANKING SECTION =====
+            st.subheader("🔝 Top 10 Links by Total Emission")
             
-            # Select which pollutant to rank by
             ranking_pollutant = st.selectbox("Select Pollutant to Rank by", options=selected_pollutants)
 
             if ranking_pollutant in emissions_data:
-                # Combine link data with total emissions for the ranking pollutant
                 ranking_data = st.session_state.data_link.copy()
                 
-                # Check column count and assign names
                 if ranking_data.shape[1] == 7:
                     ranking_data = pd.DataFrame(ranking_data, columns=['OSM_ID', 'Length_km', 'Flow', 'Speed', 'Gasoline_Prop', 'PC_Prop', '4Stroke_Prop'])
                 elif ranking_data.shape[1] == 9:
@@ -1141,10 +1513,7 @@ with tab5:
                 
                 ranking_data[f'Total_{ranking_pollutant}'] = emissions_data[ranking_pollutant]['total']
 
-                # Sort and take top 10
                 top_10_df = ranking_data.sort_values(by=f'Total_{ranking_pollutant}', ascending=False).head(10)
-                
-                # Convert OSM_ID to integer for better display
                 top_10_df['OSM_ID'] = top_10_df['OSM_ID'].astype(int)
 
                 st.dataframe(top_10_df[['OSM_ID', 'Length_km', 'Flow', 'Speed', f'Total_{ranking_pollutant}']], use_container_width=True)
@@ -1159,6 +1528,45 @@ with tab5:
                 st.plotly_chart(fig_top_10, use_container_width=True)
             else:
                 st.warning("Please select a pollutant that has been calculated.")
+            
+            # ===== NEW: COMPARATIVE INSIGHTS SECTION =====
+            st.markdown("---")
+            st.subheader("💡 Comparative Insights")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**🔍 Key Findings:**")
+                
+                # Find dominant vehicle type
+                for poll in selected_pollutants:
+                    pc = emissions_data[poll]['pc'].sum()
+                    ldv = emissions_data[poll]['ldv'].sum()
+                    hdv = emissions_data[poll]['hdv'].sum()
+                    moto = emissions_data[poll]['moto'].sum()
+                    
+                    vehicle_totals = {'PC': pc, 'LDV': ldv, 'HDV': hdv, 'Motorcycle': moto}
+                    dominant_vehicle = max(vehicle_totals, key=vehicle_totals.get)
+                    dominant_percentage = (vehicle_totals[dominant_vehicle] / sum(vehicle_totals.values())) * 100
+                    
+                    st.markdown(f"""
+                    **{poll}**: {dominant_vehicle} contributes **{dominant_percentage:.1f}%** of total emissions
+                    """)
+            
+            with col2:
+                st.markdown("**⛽ Fuel Type Insights:**")
+                
+                for poll in selected_pollutants:
+                    poll_fuel_data = fuel_type_df[fuel_type_df['Pollutant'] == poll]
+                    gasoline_pct = poll_fuel_data[poll_fuel_data['Fuel_Type'] == 'Gasoline']['Percentage'].iloc[0]
+                    diesel_pct = poll_fuel_data[poll_fuel_data['Fuel_Type'] == 'Diesel']['Percentage'].iloc[0]
+                    
+                    dominant_fuel = 'Gasoline' if gasoline_pct > diesel_pct else 'Diesel'
+                    dominant_fuel_pct = max(gasoline_pct, diesel_pct)
+                    
+                    st.markdown(f"""
+                    **{poll}**: {dominant_fuel} vehicles contribute **{dominant_fuel_pct:.1f}%**
+                    """)
 
         else:
             st.info("No pollutants selected for analysis.")
@@ -1166,10 +1574,10 @@ with tab5:
         st.info("Please calculate emissions first in the 'Calculate Emissions' tab.")
  
 # ==================== TAB 6: INTERACTIVE MAP ====================
-# ==================== TAB 6: INTERACTIVE MAP ====================
+# ==================== TAB 6: INTERACTIVE MAP (ENHANCED CUSTOM) ====================
 with tab6:
-    st.header("🗺️ Interactive Emission Map")
-    st.markdown("Visualize the calculated emissions on the road network.")
+    st.header("🗺️ Interactive Emission Map - Custom Control Panel")
+    st.markdown("Advanced visualization with full control over map rendering and styling")
     
     if 'emissions_data' in st.session_state and 'data_link' in st.session_state:
         
@@ -1177,164 +1585,252 @@ with tab6:
         emissions_data = st.session_state.emissions_data
         data_link_np = st.session_state.data_link
         
-        # NEW: Vehicle Type Selection for Mapping
+        # ========== VEHICLE TYPE & POLLUTANT SELECTION ==========
+        st.subheader("🎯 Data Selection")
         col1, col2 = st.columns(2)
         with col1:
             vehicle_types_to_map = ['Total', 'PC', 'LDV', 'HDV', 'Moto']
             map_type = st.selectbox(
-                "Select Vehicle Type to Map", 
+                "Vehicle Type", 
                 options=vehicle_types_to_map,
                 key='map_type_select',
-                index=0,  # Default to 'Total'
-                help="Choose which vehicle type's emissions to visualize on the map"
+                index=0,
+                help="Choose which vehicle type's emissions to visualize"
             )
         
         with col2:
-            # Existing Pollutant Selection
             map_pollutant = st.selectbox(
-                "Select Pollutant to Map", 
+                "Pollutant", 
                 options=st.session_state.selected_pollutants,
                 key='map_pollutant_select',
-                help="Choose which pollutant to visualize on the map"
+                help="Choose which pollutant to visualize"
             )
         
-        # Load the emission data for the selected vehicle type and pollutant
+        # Load the emission data
         hot_emission = emissions_data[map_pollutant][map_type.lower()]
         
         st.info(f"📊 Mapping {map_type} {map_pollutant} emissions across the road network")
         
-        # Check if OSM file is available for proper road network visualization
+        # ========== ADVANCED CONTROL PANEL ==========
+        with st.expander("🎨 Advanced Visualization Controls", expanded=True):
+            
+            # ===== COLOR & APPEARANCE =====
+            st.markdown("### 🎨 Color & Appearance")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                colormap = st.selectbox(
+                    "Color Map",
+                    options=['jet', 'viridis', 'plasma', 'inferno', 'magma', 
+                            'RdYlGn_r', 'RdYlBu_r', 'hot', 'cool', 'spring', 
+                            'summer', 'autumn', 'winter', 'coolwarm', 'seismic',
+                            'twilight', 'rainbow'],
+                    index=0,
+                    help="Choose the color gradient for emission intensity"
+                )
+                
+                color_scale_type = st.radio(
+                    "Color Scale Type",
+                    options=['Linear', 'Log', 'Sqrt'],
+                    horizontal=True,
+                    help="Linear: standard | Log: emphasize extremes | Sqrt: balance"
+                )
+            
+            with col2:
+                fig_size = st.slider("Figure Size", 8, 24, 14, step=2)
+                
+                color_direction = st.radio(
+                    "Color Direction",
+                    options=['Normal', 'Reversed'],
+                    horizontal=True,
+                    help="Reverse the color gradient direction"
+                )
+            
+            with col3:
+                enhanced_styling = st.checkbox("Enhanced Styling (rounded caps)", value=True)
+                colorbar_position = st.radio(
+                    "Colorbar Position",
+                    options=['Right', 'Bottom'],
+                    horizontal=True
+                )
+            
+            # ===== ROAD RENDERING =====
+            st.markdown("### 🛣️ Road Rendering")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                line_width_multiplier = st.slider("Road Width Multiplier", 0.1, 10.0, 2.0, 0.1)
+                
+                width_scale_mode = st.selectbox(
+                    "Width Scale Mode",
+                    options=['Proportional to Emissions', 'Fixed Width', 'Logarithmic'],
+                    help="How road width relates to emission values"
+                )
+            
+            with col2:
+                road_transparency = st.slider("Road Transparency", 0.0, 1.0, 0.8, 0.05)
+                
+                edge_width = st.slider("Road Edge Width", 0.0, 2.0, 0.5, 0.1)
+                
+            with col3:
+                show_roads_without_data = st.checkbox("Show Roads Without Data", value=True)
+                
+                if show_roads_without_data:
+                    no_data_color = st.color_picker("No-Data Road Color", "#808080")
+                    no_data_width = st.slider("No-Data Road Width", 0.1, 3.0, 0.3, 0.1)
+                    no_data_transparency = st.slider("No-Data Transparency", 0.0, 1.0, 0.3, 0.05)
+            
+            # ===== GRID & BACKGROUND =====
+            st.markdown("### 🏞️ Grid & Background")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                add_grid = st.checkbox("Show Grid", value=True)
+                
+                if add_grid:
+                    grid_alpha = st.slider("Grid Transparency", 0.0, 1.0, 0.2, 0.05)
+                    grid_style = st.selectbox("Grid Style", options=['--', '-', '-.', ':'])
+                    grid_width = st.slider("Grid Line Width", 0.1, 2.0, 0.5, 0.1)
+                else:
+                    grid_alpha = 0.2
+                    grid_style = '--'
+                    grid_width = 0.5
+            
+            with col2:
+                background_color = st.color_picker("Background Color", "#f0f0f0")
+                
+                add_boundary = st.checkbox("Show Domain Boundary", value=True)
+                
+                if add_boundary:
+                    boundary_color = st.color_picker("Boundary Color", "#000000")
+                    boundary_width = st.slider("Boundary Width", 0.5, 5.0, 2.0, 0.5)
+            
+            with col3:
+                # Additional styling
+                add_axis_labels = st.checkbox("Show Axis Labels", value=True)
+                axis_label_size = st.slider("Axis Label Size", 8, 20, 12)
+                
+                title_size = st.slider("Title Font Size", 10, 24, 14)
+            
+            # ===== LABEL CONTROL =====
+            st.markdown("### 🏷️ Road Name Labels")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                show_labels = st.checkbox("Show Road Labels", value=True)
+                
+                if show_labels:
+                    label_density = st.selectbox(
+                        "Label Density",
+                        options=["Ultra Minimal (Motorways only)", 
+                                "Minimal (Major roads only)", 
+                                "Medium (Top 25%)", 
+                                "High (Top 50%)", 
+                                "Maximum (All named roads)"],
+                        index=1
+                    )
+            
+            with col2:
+                if show_labels:
+                    label_font_size = st.slider("Label Font Size", 4, 16, 7)
+                    
+                    label_color = st.color_picker("Label Text Color", "#000000")
+                    
+                    label_bg_color = st.color_picker("Label Background Color", "#ffffff")
+            
+            with col3:
+                if show_labels:
+                    rotate_labels = st.checkbox("Rotate Labels Along Roads", value=True)
+                    
+                    min_label_distance = st.slider("Min Distance Between Labels (km)", 0.001, 0.01, 0.002, 0.001)
+                    
+                    label_bg_opacity = st.slider("Label BG Opacity", 0.0, 1.0, 0.8, 0.1)
+            
+            # ===== ADVANCED FILTERING =====
+            st.markdown("### 🔍 Emission Filtering & Thresholds")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                filter_by_emission = st.checkbox("Filter by Emission Threshold", value=False)
+                
+                if filter_by_emission:
+                    emission_min = st.slider(
+                        "Minimum Emission",
+                        float(hot_emission.min()),
+                        float(hot_emission.max()),
+                        float(hot_emission.min()),
+                        step=float((hot_emission.max() - hot_emission.min()) / 100)
+                    )
+                else:
+                    emission_min = float(hot_emission.min())
+            
+            with col2:
+                filter_by_speed = st.checkbox("Filter by Speed Range", value=False)
+                
+                if filter_by_speed:
+                    speed_min, speed_max = st.slider(
+                        "Speed Range (km/h)",
+                        int(data_link_np[:, 3].min()),
+                        int(data_link_np[:, 3].max()),
+                        (int(data_link_np[:, 3].min()), int(data_link_np[:, 3].max())),
+                        key='speed_range'
+                    )
+                else:
+                    speed_min = int(data_link_np[:, 3].min())
+                    speed_max = int(data_link_np[:, 3].max())
+            
+            with col3:
+                filter_by_flow = st.checkbox("Filter by Traffic Flow", value=False)
+                
+                if filter_by_flow:
+                    flow_min, flow_max = st.slider(
+                        "Flow Range (vehicles)",
+                        int(data_link_np[:, 2].min()),
+                        int(data_link_np[:, 2].max()),
+                        (int(data_link_np[:, 2].min()), int(data_link_np[:, 2].max())),
+                        key='flow_range'
+                    )
+                else:
+                    flow_min = int(data_link_np[:, 2].min())
+                    flow_max = int(data_link_np[:, 2].max())
+            
+            # ===== STATISTICS =====
+            st.markdown("### 📊 Show Statistics")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                show_colorbar = st.checkbox("Show Colorbar", value=True)
+            
+            with col2:
+                show_stats_box = st.checkbox("Show Statistics Box", value=True)
+            
+            with col3:
+                show_legend = st.checkbox("Show Legend", value=True)
+        
+        st.markdown("---")
+        
+        # ========== OSM FILE CHECK & MAP GENERATION ==========
         if osm_file is None:
-            st.warning("⚠️ Please upload OSM network file for proper road network visualization")
+            st.warning("⚠️ Upload OSM network file (.osm) in the sidebar to generate the road network map")
             
-            # Fallback to simplified scatter plot if no OSM file
-            st.subheader(f"Simplified {map_type} {map_pollutant} Emission Map")
-            st.caption("Note: Upload OSM file for proper road network visualization")
+            # Fallback simplified visualization
+            st.subheader("Simplified Emission Distribution (No OSM File)")
+            st.caption("Upload OSM file for detailed road network visualization")
             
-            # Prepare data for simplified map visualization
-            map_df = pd.DataFrame({
-                'OSM_ID': data_link_np[:, 0],
-                'Latitude': (data_link_np[:, 0] % 1000) * 0.0001 + y_min, # Placeholder Lat
-                'Longitude': (data_link_np[:, 0] % 1000) * 0.0001 + x_min, # Placeholder Lon
-                'Emission_Value': hot_emission,
-                'Speed': data_link_np[:, 3]
-            })
-            
-            # Create a scatter map for visualization
-            fig_map = go.Figure(data=go.Scattergeo(
-                lon=map_df['Longitude'],
-                lat=map_df['Latitude'],
-                text=map_df.apply(lambda row: f"Link ID: {int(row['OSM_ID'])}<br>{map_type} {map_pollutant}: {row['Emission_Value']:.2f} {pollutants_available[map_pollutant]['unit']}", axis=1),
-                mode='markers',
-                marker=dict(
-                    size=10,
-                    opacity=0.8,
-                    reversescale=True,
-                    autocolorscale=False,
-                    symbol='circle',
-                    line=dict(width=1, color='rgba(102, 102, 102)'),
-                    cmax=hot_emission.max(),
-                    cmin=hot_emission.min(),
-                    colorbar_title=f"{map_type} {map_pollutant}",
-                    color=map_df['Emission_Value'],
-                    colorscale=px.colors.sequential.Viridis
-                )))
-
-            fig_map.update_layout(
-                geo=dict(
-                    scope='world',
-                    showland=True,
-                    landcolor='rgb(217, 217, 217)',
-                    subunitcolor='rgb(255, 255, 255)',
-                    countrycolor='rgb(255, 255, 255)',
-                    showlakes=True,
-                    lakecolor='rgb(255, 255, 255)',
-                    showsubunits=True,
-                    showcountries=True,
-                    lonaxis=dict(range=[x_min - tolerance, x_max + tolerance]),
-                    lataxis=dict(range=[y_min - tolerance, y_max + tolerance]),
-                ),
-                title_text=f"Geographical Distribution of {map_type} {map_pollutant} Emissions",
-                margin={"r":0,"t":50,"l":0,"b":0}
+            # Create histogram
+            fig_hist = px.histogram(
+                x=hot_emission,
+                nbins=50,
+                title=f"{map_type} {map_pollutant} Distribution",
+                labels={'x': f'{map_pollutant} ({pollutants_available[map_pollutant]["unit"]})'},
+                template="plotly_white"
             )
-            st.plotly_chart(fig_map, use_container_width=True)
-            
+            st.plotly_chart(fig_hist, use_container_width=True)
+        
         else:
-            # Use the sophisticated road network visualization when OSM file is available
-            st.subheader("🎨 Visualization Settings")
-            viz_mode = st.radio("Select visualization style:", ["Classic (Original)", "Enhanced with Labels", "Custom"], 
-                                horizontal=True, help="Classic: Original | Enhanced: Smart labels | Custom: Full control")
-            st.markdown("---")
-            
-            if viz_mode == "Classic (Original)":
-                st.markdown("**Classic Mode Settings**")
-                col1, col2 = st.columns(2)
-                with col1:
-                    colormap = st.selectbox("Color Map", ['jet','viridis','plasma','RdYlGn_r','hot'], index=0)
-                    fig_size = st.slider("Figure Size", 8, 16, 10)
-                with col2:
-                    show_roads_without_data = st.checkbox("Show roads without emission data", value=False)
-                    add_grid = st.checkbox("Add grid lines", value=False)
-                line_width_multiplier = 1.0
-                show_labels = False
-                label_density = "Minimal (Major roads only)"
-                rotate_labels = False
-                enhanced_styling = False
-                road_transparency = 1.0
-                grid_alpha = 0.3
-                label_font_size = 7
-                min_label_distance = 0.002
-            elif viz_mode == "Enhanced with Labels":
-                st.markdown("**Enhanced Mode Settings**")
-                col1, col2 = st.columns(2)
-                with col1:
-                    colormap = st.selectbox("Color Map", ['jet','viridis','plasma','RdYlGn_r','hot','coolwarm'], index=0)
-                    fig_size = st.slider("Figure Size", 8, 16, 12)
-                    line_width_multiplier = st.slider("Line Width Scale", 0.5, 5.0, 2.0, 0.5)
-                with col2:
-                    label_density = st.selectbox("Road Label Density", ["Minimal (Major roads only)", "Medium (Top 25% emissions)", "High (Top 50% emissions)"], index=1)
-                    show_roads_without_data = st.checkbox("Show roads without emission data", value=True)
-                    rotate_labels = st.checkbox("Rotate labels along roads", value=True)
-                show_labels = True
-                enhanced_styling = True
-                add_grid = True
-                road_transparency = 0.8
-                grid_alpha = 0.2
-                label_font_size = 7
-                min_label_distance = 0.002
-            else:
-                st.markdown("**Custom Mode Settings**")
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.markdown("**Appearance**")
-                    colormap = st.selectbox("Color Map", ['jet','viridis','plasma','RdYlGn_r','hot','coolwarm','inferno'], index=0)
-                    fig_size = st.slider("Figure Size", 8, 20, 12)
-                    line_width_multiplier = st.slider("Line Width Scale", 0.1, 10.0, 2.0, 0.5)
-                    enhanced_styling = st.checkbox("Enhanced styling", value=True)
-                with col2:
-                    st.markdown("**Road Display**")
-                    show_roads_without_data = st.checkbox("Show roads without emission data", value=True)
-                    road_transparency = st.slider("Road transparency", 0.0, 1.0, 0.8, 0.1)
-                    add_grid = st.checkbox("Add grid lines", value=True)
-                    grid_alpha = st.slider("Grid transparency", 0.0, 1.0, 0.2, 0.1) if add_grid else 0.2
-                with col3:
-                    st.markdown("**Labels**")
-                    show_labels = st.checkbox("Show road labels", value=True)
-                    if show_labels:
-                        label_density = st.selectbox("Label Density", ["Minimal (Major roads only)", "Medium (Top 25% emissions)", 
-                                                                       "High (Top 50% emissions)", "Maximum (All named roads)"], index=1)
-                        rotate_labels = st.checkbox("Rotate labels along roads", value=True)
-                        label_font_size = st.slider("Label font size", 4, 12, 7)
-                        min_label_distance = st.slider("Min distance between labels", 0.001, 0.01, 0.002, 0.001)
-                    else:
-                        label_density = "Minimal (Major roads only)"
-                        rotate_labels = False
-                        label_font_size = 7
-                        min_label_distance = 0.002
-            
-            st.markdown("---")
-            if st.button("🗺️ Generate Road Network Map", type="primary", use_container_width=True):
-                with st.spinner("Generating emission map..."):
+            # ===== GENERATE MAP BUTTON =====
+            if st.button("🗺️ Generate Custom Map", type="primary", use_container_width=True):
+                with st.spinner("Generating emission map with custom settings..."):
                     try:
                         import osm_network
                         import tempfile, os
@@ -1349,40 +1845,85 @@ with tab6:
                             selected_zone.append(selected_zone[0])
                             status_text = st.empty()
                             status_text.text("Parsing OSM network...")
-                            highway_coordinate, highway_osmid, highway_names, highway_types = osm_network.retrieve_highway(osm_path, selected_zone, tolerance, int(ncore))
+                            
+                            highway_coordinate, highway_osmid, highway_names, highway_types = osm_network.retrieve_highway(
+                                osm_path, selected_zone, tolerance, int(ncore)
+                            )
                             status_text.text("OSM network parsed successfully!")
                             
-                            max_emission_value = np.max(hot_emission)
-                            epsilon = 1e-9
+                            # ===== APPLY FILTERS =====
+                            filtered_mask = np.ones(len(hot_emission), dtype=bool)
                             
-                            if viz_mode == "Classic (Original)":
-                                lw_max = 0.00004
-                                lw_min = 0.00002
-                                width_scaling = (lw_max - lw_min) / (max_emission_value + epsilon) + lw_min
-                                lw_nodata = 0.003
-                            else:
-                                lw_max = 3.0 * line_width_multiplier
-                                lw_min = 0.5 * line_width_multiplier
-                                width_scaling = (lw_max - lw_min) / (max_emission_value + epsilon)
-                                lw_nodata = 0.3
+                            if filter_by_emission:
+                                filtered_mask &= hot_emission >= emission_min
                             
-                            color_scale = colors.Normalize(vmin=0, vmax=max_emission_value + epsilon)
-                            scale_map = cmx.ScalarMappable(norm=color_scale, cmap=colormap)
+                            if filter_by_speed:
+                                filtered_mask &= (data_link_np[:, 3] >= speed_min) & (data_link_np[:, 3] <= speed_max)
+                            
+                            if filter_by_flow:
+                                filtered_mask &= (data_link_np[:, 2] >= flow_min) & (data_link_np[:, 2] <= flow_max)
+                            
                             emission_osm_id = [int(x) for x in data_link_np[:, 0]]
                             
-                            fig = plt.figure(figsize=(fig_size, fig_size - 1), dpi=100)
-                            ax = fig.add_axes([0.1, 0.1, 0.75, 0.75])
-                            ax.set_aspect("equal", adjustable="box")
-                            ax_c = fig.add_axes([0.85, 0.21, 0.03, 0.53])
-                            cb = matplotlib.colorbar.ColorbarBase(ax_c, cmap=plt.cm.get_cmap(colormap), norm=color_scale, orientation="vertical")
-                            cb.set_label(f"{map_pollutant} ({pollutants_available[map_pollutant]['unit']})", fontsize=12)
+                            # ===== COLOR SCALE SETUP =====
+                            if color_scale_type == 'Log':
+                                color_scale = colors.LogNorm(
+                                    vmin=max(hot_emission[filtered_mask].min(), 1e-6),
+                                    vmax=hot_emission[filtered_mask].max()
+                                )
+                            elif color_scale_type == 'Sqrt':
+                                color_scale = colors.PowerNorm(
+                                    gamma=0.5,
+                                    vmin=hot_emission[filtered_mask].min(),
+                                    vmax=hot_emission[filtered_mask].max()
+                                )
+                            else:  # Linear
+                                color_scale = colors.Normalize(
+                                    vmin=hot_emission[filtered_mask].min(),
+                                    vmax=hot_emission[filtered_mask].max()
+                                )
                             
-                            if enhanced_styling:
-                                ax.set_facecolor('#f0f0f0')
+                            # Apply color reversal if selected
+                            cmap_name = colormap + '_r' if color_direction == 'Reversed' else colormap
+                            scale_map = cmx.ScalarMappable(norm=color_scale, cmap=plt.cm.get_cmap(cmap_name))
+                            
+                            # ===== FIGURE SETUP =====
+                            if colorbar_position == 'Right':
+                                fig = plt.figure(figsize=(fig_size, fig_size - 1), dpi=100)
+                                ax = fig.add_axes([0.1, 0.1, 0.75, 0.75])
+                                ax_c = fig.add_axes([0.85, 0.21, 0.03, 0.53])
+                            else:
+                                fig = plt.figure(figsize=(fig_size, fig_size - 1), dpi=100)
+                                ax = fig.add_axes([0.1, 0.15, 0.8, 0.7])
+                                ax_c = fig.add_axes([0.15, 0.08, 0.7, 0.02])
+                                colorbar_orientation = 'horizontal'
+                            
+                            ax.set_aspect("equal", adjustable="box")
+                            
+                            # Colorbar setup
+                            if show_colorbar:
+                                cb_orientation = 'vertical' if colorbar_position == 'Right' else 'horizontal'
+                                cb = matplotlib.colorbar.ColorbarBase(
+                                    ax_c, cmap=plt.cm.get_cmap(cmap_name), norm=color_scale,
+                                    orientation=cb_orientation
+                                )
+                                cb.set_label(
+                                    f"{map_type} {map_pollutant} ({pollutants_available[map_pollutant]['unit']})",
+                                    fontsize=title_size
+                                )
+                            else:
+                                ax_c.axis('off')
+                            
+                            # Background
+                            ax.set_facecolor(background_color)
                             
                             status_text.text("Plotting emission data on map...")
-                            roads_with_data = 0
+                            
+                            # ===== PLOT ROADS =====
+                            # ===== PLOT ROADS =====
+                            roads_plotted = 0
                             roads_without_data = 0
+                            labeled_roads = {}
                             
                             for refs, osmid, name, highway_type in zip(highway_coordinate, highway_osmid, highway_names, highway_types):
                                 try:
@@ -1390,150 +1931,294 @@ with tab6:
                                 except:
                                     i = None
                                 
-                                if i is not None:
+                                if i is not None and filtered_mask[i]:
                                     current_emission = hot_emission[i]
                                     color_value = scale_map.to_rgba(current_emission)
-                                    if viz_mode == "Classic (Original)":
-                                        line_width = current_emission * width_scaling
-                                    else:
-                                        line_width = lw_min + (current_emission * width_scaling)
-                                    plot_kwargs = {'color': color_value, 'lw': line_width, 'alpha': road_transparency}
+                                    
+                                    # ===== WIDTH CALCULATION =====
+                                    if width_scale_mode == 'Fixed Width':
+                                        line_width = 1.5 * line_width_multiplier
+                                    elif width_scale_mode == 'Logarithmic':
+                                        line_width = (np.log1p(current_emission) / np.log1p(hot_emission[filtered_mask].max())) * line_width_multiplier * 3
+                                    else:  # Proportional
+                                        max_emission = hot_emission[filtered_mask].max()
+                                        line_width = (current_emission / max_emission) * line_width_multiplier * 3
+                                    
+                                    # Draw edge/outline if requested
+                                    if edge_width > 0:
+                                        ax.plot([x[0] for x in refs], [x[1] for x in refs],
+                                               color='black', lw=line_width + edge_width * 2,
+                                               alpha=road_transparency * 0.5, zorder=1)
+                                    
+                                    # Draw main road line
+                                    line = ax.plot([x[0] for x in refs], [x[1] for x in refs],
+                                                  color=color_value, lw=line_width, alpha=road_transparency, zorder=2)
+                                    
+                                    # Apply enhanced styling using set methods
                                     if enhanced_styling:
-                                        plot_kwargs['solid_capstyle'] = 'round'
-                                    ax.plot([x[0] for x in refs], [x[1] for x in refs], **plot_kwargs)
-                                    roads_with_data += 1
-                                else:
-                                    if show_roads_without_data:
-                                        if viz_mode == "Classic (Original)":
-                                            ax.plot([x[0] for x in refs], [x[1] for x in refs], "k-", lw=lw_nodata)
-                                        else:
-                                            ax.plot([x[0] for x in refs], [x[1] for x in refs], "gray", lw=lw_nodata, alpha=0.3)
-                                        roads_without_data += 1
-                            
-                            if show_labels and viz_mode != "Classic (Original)":
-                                labeled_roads = {}
-                                major_road_types = ['motorway', 'trunk', 'primary', 'secondary']
-                                if label_density == "Minimal (Major roads only)":
-                                    emission_percentile = 90
-                                    major_only = True
-                                elif label_density == "Medium (Top 25% emissions)":
-                                    emission_percentile = 75
-                                    major_only = False
-                                elif label_density == "High (Top 50% emissions)":
-                                    emission_percentile = 50
-                                    major_only = False
-                                else:
-                                    emission_percentile = 0
-                                    major_only = False
-                                
-                                emission_threshold = np.percentile(hot_emission, emission_percentile)
-                                
-                                for refs, osmid, name, highway_type in zip(highway_coordinate, highway_osmid, highway_names, highway_types):
-                                    try:
-                                        i = emission_osm_id.index(osmid)
-                                        current_emission = hot_emission[i]
-                                    except:
-                                        continue
+                                        line[0].set_solid_capstyle('round')
+                                        line[0].set_solid_joinstyle('round')
                                     
-                                    if major_only:
-                                        should_label = name and highway_type in major_road_types
-                                    else:
-                                        should_label = name and (highway_type in major_road_types or current_emission >= emission_threshold)
+                                    roads_plotted += 1
                                     
-                                    if should_label:
-                                        center_index = len(refs) // 2
-                                        x_center = refs[center_index][0]
-                                        y_center = refs[center_index][1]
-                                        too_close = False
-                                        if name in labeled_roads:
-                                            for prev_x, prev_y in labeled_roads[name]:
-                                                distance = np.sqrt((x_center - prev_x)**2 + (y_center - prev_y)**2)
-                                                if distance < min_label_distance:
-                                                    too_close = True
-                                                    break
-                                        if not too_close:
-                                            angle = 0
-                                            if rotate_labels and len(refs) > 1:
-                                                dx = refs[min(center_index + 1, len(refs) - 1)][0] - refs[max(center_index - 1, 0)][0]
-                                                dy = refs[min(center_index + 1, len(refs) - 1)][1] - refs[max(center_index - 1, 0)][1]
-                                                angle = np.degrees(np.arctan2(dy, dx))
-                                                if angle > 90:
-                                                    angle -= 180
-                                                elif angle < -90:
-                                                    angle += 180
-                                            ax.text(x_center, y_center, str(name), fontsize=label_font_size, color='black', ha='center', va='center',
-                                                    rotation=angle, rotation_mode='anchor', bbox=dict(facecolor='white', alpha=0.8, edgecolor='lightgray',
-                                                    linewidth=0.5, boxstyle='round,pad=0.3'), zorder=100)
-                                            if name not in labeled_roads:
-                                                labeled_roads[name] = []
-                                            labeled_roads[name].append((x_center, y_center))
+                                    # ===== LABEL HANDLING =====
+                                    if show_labels and name:
+                                        should_label = False
+                                        major_road_types = ['motorway', 'trunk', 'primary', 'secondary']
+                                        
+                                        if label_density == "Ultra Minimal (Motorways only)":
+                                            should_label = highway_type == 'motorway'
+                                        elif label_density == "Minimal (Major roads only)":
+                                            should_label = highway_type in major_road_types
+                                        elif label_density == "Medium (Top 25%)":
+                                            percentile_threshold = np.percentile(hot_emission[filtered_mask], 75)
+                                            should_label = (highway_type in major_road_types or 
+                                                          current_emission >= percentile_threshold)
+                                        elif label_density == "High (Top 50%)":
+                                            percentile_threshold = np.percentile(hot_emission[filtered_mask], 50)
+                                            should_label = (highway_type in major_road_types or 
+                                                          current_emission >= percentile_threshold)
+                                        else:  # Maximum
+                                            should_label = True
+                                        
+                                        if should_label:
+                                            center_index = len(refs) // 2
+                                            x_center = refs[center_index][0]
+                                            y_center = refs[center_index][1]
+                                            
+                                            too_close = False
+                                            if name in labeled_roads:
+                                                for prev_x, prev_y in labeled_roads[name]:
+                                                    distance = np.sqrt((x_center - prev_x)**2 + (y_center - prev_y)**2)
+                                                    if distance < min_label_distance:
+                                                        too_close = True
+                                                        break
+                                            
+                                            if not too_close:
+                                                angle = 0
+                                                if rotate_labels and len(refs) > 1:
+                                                    dx = refs[min(center_index + 1, len(refs) - 1)][0] - refs[max(center_index - 1, 0)][0]
+                                                    dy = refs[min(center_index + 1, len(refs) - 1)][1] - refs[max(center_index - 1, 0)][1]
+                                                    angle = np.degrees(np.arctan2(dy, dx))
+                                                    if angle > 90:
+                                                        angle -= 180
+                                                    elif angle < -90:
+                                                        angle += 180
+                                                
+                                                ax.text(
+                                                    x_center, y_center, str(name),
+                                                    fontsize=label_font_size,
+                                                    color=label_color,
+                                                    ha='center',
+                                                    va='center',
+                                                    rotation=angle,
+                                                    rotation_mode='anchor',
+                                                    bbox=dict(
+                                                        facecolor=label_bg_color,
+                                                        alpha=label_bg_opacity,
+                                                        edgecolor='gray',
+                                                        linewidth=0.5,
+                                                        boxstyle='round,pad=0.3'
+                                                    ),
+                                                    zorder=100
+                                                )
+                                                
+                                                if name not in labeled_roads:
+                                                    labeled_roads[name] = []
+                                                labeled_roads[name].append((x_center, y_center))
+                                
+                                elif show_roads_without_data and (i is None or not filtered_mask[i]):
+                                    ax.plot(
+                                        [x[0] for x in refs], [x[1] for x in refs],
+                                        color=no_data_color,
+                                        lw=no_data_width,
+                                        alpha=no_data_transparency,
+                                        zorder=0
+                                    )
+                                    roads_without_data += 1
+                                    
+                                    # ===== LABEL HANDLING =====
+                                    if show_labels and name:
+                                        should_label = False
+                                        major_road_types = ['motorway', 'trunk', 'primary', 'secondary']
+                                        
+                                        if label_density == "Ultra Minimal (Motorways only)":
+                                            should_label = highway_type == 'motorway'
+                                        elif label_density == "Minimal (Major roads only)":
+                                            should_label = highway_type in major_road_types
+                                        elif label_density == "Medium (Top 25%)":
+                                            percentile_threshold = np.percentile(hot_emission[filtered_mask], 75)
+                                            should_label = (highway_type in major_road_types or 
+                                                          current_emission >= percentile_threshold)
+                                        elif label_density == "High (Top 50%)":
+                                            percentile_threshold = np.percentile(hot_emission[filtered_mask], 50)
+                                            should_label = (highway_type in major_road_types or 
+                                                          current_emission >= percentile_threshold)
+                                        else:  # Maximum
+                                            should_label = True
+                                        
+                                        if should_label:
+                                            center_index = len(refs) // 2
+                                            x_center = refs[center_index][0]
+                                            y_center = refs[center_index][1]
+                                            
+                                            too_close = False
+                                            if name in labeled_roads:
+                                                for prev_x, prev_y in labeled_roads[name]:
+                                                    distance = np.sqrt((x_center - prev_x)**2 + (y_center - prev_y)**2)
+                                                    if distance < min_label_distance:
+                                                        too_close = True
+                                                        break
+                                            
+                                            if not too_close:
+                                                angle = 0
+                                                if rotate_labels and len(refs) > 1:
+                                                    dx = refs[min(center_index + 1, len(refs) - 1)][0] - refs[max(center_index - 1, 0)][0]
+                                                    dy = refs[min(center_index + 1, len(refs) - 1)][1] - refs[max(center_index - 1, 0)][1]
+                                                    angle = np.degrees(np.arctan2(dy, dx))
+                                                    if angle > 90:
+                                                        angle -= 180
+                                                    elif angle < -90:
+                                                        angle += 180
+                                                
+                                                ax.text(
+                                                    x_center, y_center, str(name),
+                                                    fontsize=label_font_size,
+                                                    color=label_color,
+                                                    ha='center',
+                                                    va='center',
+                                                    rotation=angle,
+                                                    rotation_mode='anchor',
+                                                    bbox=dict(
+                                                        facecolor=label_bg_color,
+                                                        alpha=label_bg_opacity,
+                                                        edgecolor='gray',
+                                                        linewidth=0.5,
+                                                        boxstyle='round,pad=0.3'
+                                                    ),
+                                                    zorder=100
+                                                )
+                                                
+                                                if name not in labeled_roads:
+                                                    labeled_roads[name] = []
+                                                labeled_roads[name].append((x_center, y_center))
+                                
+                                elif show_roads_without_data and (i is None or not filtered_mask[i]):
+                                    ax.plot(
+                                        [x[0] for x in refs], [x[1] for x in refs],
+                                        color=no_data_color,
+                                        lw=no_data_width,
+                                        alpha=no_data_transparency,
+                                        zorder=0
+                                    )
+                                    roads_without_data += 1
                             
+                            # ===== DOMAIN BOUNDARY =====
+                            if add_boundary:
+                                boundary_x = [x_min, x_max, x_max, x_min, x_min]
+                                boundary_y = [y_min, y_min, y_max, y_max, y_min]
+                                ax.plot(boundary_x, boundary_y, color=boundary_color, lw=boundary_width,
+                                       linestyle='--', label='Domain Boundary', zorder=50)
+                            
+                            # ===== GRID =====
+                            if add_grid:
+                                ax.grid(True, alpha=grid_alpha, linestyle=grid_style, linewidth=grid_width)
+                            
+                            # ===== LABELS & TITLES =====
                             ax.set_xlim(x_min, x_max)
                             ax.set_ylim(y_min, y_max)
+                            ax.set_title(
+                                f"{map_type} {map_pollutant} Emission Map\n({color_scale_type} Scale | {width_scale_mode})",
+                                fontsize=title_size,
+                                fontweight='bold'
+                            )
                             
-                            if viz_mode == "Classic (Original)":
-                                ax.set_title(f"{map_type} {map_pollutant} Emission Map", fontsize=14)
+                            if add_axis_labels:
+                                ax.set_xlabel("Longitude", fontsize=axis_label_size)
+                                ax.set_ylabel("Latitude", fontsize=axis_label_size)
                             else:
-                                ax.set_title(f"{map_type} {map_pollutant} Emission Map with Road Names", fontsize=14, fontweight='bold')
+                                ax.set_xlabel("")
+                                ax.set_ylabel("")
                             
-                            ax.set_xlabel("Longitude", fontsize=12)
-                            ax.set_ylabel("Latitude", fontsize=12)
-                            
-                            if add_grid:
-                                ax.grid(True, alpha=grid_alpha, linestyle='--', linewidth=0.5)
+                            if show_legend and add_boundary:
+                                ax.legend(loc='upper right', fontsize=axis_label_size - 2)
                             
                             st.pyplot(fig)
                             st.session_state.emission_map_fig = fig
                             
-                            # Display statistics
-                            if show_labels and viz_mode != "Classic (Original)":
+                            # ===== STATISTICS BOX =====
+                            if show_stats_box:
+                                st.markdown("---")
+                                st.subheader("📊 Map Statistics")
+                                col1, col2, col3, col4, col5 = st.columns(5)
+                                
+                                with col1:
+                                    st.metric("Roads Plotted", roads_plotted)
+                                with col2:
+                                    st.metric("Roads without Data", roads_without_data)
+                                with col3:
+                                    st.metric("Unique Road Names", len(labeled_roads))
+                                with col4:
+                                    st.metric("Min Emission", f"{hot_emission[filtered_mask].min():.3f}")
+                                with col5:
+                                    st.metric("Max Emission", f"{hot_emission[filtered_mask].max():.3f}")
+                                
                                 col1, col2, col3 = st.columns(3)
-                                with col1: 
-                                    st.metric("Roads with Emission Data", roads_with_data)
-                                with col2: 
-                                    st.metric("Roads without Data", roads_without_data)
-                                with col3: 
-                                    st.metric("Unique Road Names Labeled", len(labeled_roads))
-                            else:
-                                col1, col2 = st.columns(2)
-                                with col1: 
-                                    st.metric("Roads with Emission Data", roads_with_data)
-                                with col2: 
-                                    st.metric("Roads without Data", roads_without_data)
+                                with col1:
+                                    st.metric("Mean Emission", f"{hot_emission[filtered_mask].mean():.3f}")
+                                with col2:
+                                    st.metric("Median Emission", f"{np.median(hot_emission[filtered_mask]):.3f}")
+                                with col3:
+                                    st.metric("Std Dev", f"{hot_emission[filtered_mask].std():.3f}")
                             
                             status_text.empty()
-                            st.success("✅ Road network map generated successfully!")
-                            
+                            st.success("✅ Custom map generated successfully!")
+                        
                         finally:
                             if os.path.exists(osm_path):
                                 os.unlink(osm_path)
-                                
+                    
                     except Exception as e:
-                        st.error(f"❌ Error generating road network map: {e}")
+                        st.error(f"❌ Error generating custom map: {e}")
                         import traceback
                         with st.expander("🐛 Debug Information"):
                             st.code(traceback.format_exc())
         
-        # NEW: Add summary statistics for the selected vehicle type and pollutant
+        # ========== SUMMARY SECTION ==========
         st.markdown("---")
-        st.subheader(f"📊 {map_type} {map_pollutant} Summary")
+        st.subheader(f"📋 {map_type} {map_pollutant} Summary")
+        
+        selected_units = st.session_state.get('selected_units', {})
+        target_unit = selected_units.get(map_pollutant, pollutants_available[map_pollutant]['unit'])
+        original_unit = pollutants_available[map_pollutant]['unit']
+        
+        total_converted = convert_emission_value(
+            hot_emission.sum(), map_pollutant, original_unit, target_unit
+        )
+        avg_converted = convert_emission_value(
+            hot_emission.mean(), map_pollutant, original_unit, target_unit
+        )
+        max_converted = convert_emission_value(
+            hot_emission.max(), map_pollutant, original_unit, target_unit
+        )
+        min_converted = convert_emission_value(
+            hot_emission.min(), map_pollutant, original_unit, target_unit
+        )
+        
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric(f"Total {map_type} {map_pollutant}", 
-                     f"{hot_emission.sum():.2f} {pollutants_available[map_pollutant]['unit']}")
+            st.metric(f"Total {map_type}", f"{format_emission_value(total_converted, target_unit)} {target_unit}")
         with col2:
-            st.metric(f"Average per Link", 
-                     f"{hot_emission.mean():.3f} {pollutants_available[map_pollutant]['unit']}")
+            st.metric(f"Average per Link", f"{format_emission_value(avg_converted, target_unit)} {target_unit}")
         with col3:
-            st.metric(f"Maximum", 
-                     f"{hot_emission.max():.2f} {pollutants_available[map_pollutant]['unit']}")
+            st.metric(f"Maximum", f"{format_emission_value(max_converted, target_unit)} {target_unit}")
         with col4:
-            st.metric(f"Minimum", 
-                     f"{hot_emission.min():.2f} {pollutants_available[map_pollutant]['unit']}")
-        
+            st.metric(f"Minimum", f"{format_emission_value(min_converted, target_unit)} {target_unit}")
+    
     else:
         st.info("Please calculate emissions first in the 'Calculate Emissions' tab.")
-
+        
+# ==================== TAB 7: DOWNLOAD RESULTS ====================
 # ==================== TAB 7: DOWNLOAD RESULTS ====================
 with tab7:
     st.header("📥 Download Results")
@@ -1543,6 +2228,24 @@ with tab7:
         emissions_data = st.session_state.emissions_data
         data_link_np = st.session_state.data_link
         selected_pollutants = st.session_state.selected_pollutants
+                
+        # ADD UNIT SELECTION FOR EXPORT
+        st.subheader("📤 Export Settings")
+        col1, col2 = st.columns(2)
+        with col1:
+            export_in_converted_units = st.checkbox(
+                "Export in converted units",
+                value=False,
+                help="Export emissions in your selected display units instead of original g/km"
+            )
+        with col2:
+            if export_in_converted_units:
+                st.info("✅ Will export using sidebar unit selections")
+            else:
+                st.info("ℹ️ Will export in original units (g/km, mg/km, L/100km)")
+        
+        st.markdown("---")
+        # ============ END NEW SECTION ============
 
         # Create a single comprehensive results dataframe
         final_results_df = pd.DataFrame(data_link_np[:, :4], columns=['OSM_ID', 'Length_km', 'Flow', 'Speed'])
@@ -1558,15 +2261,36 @@ with tab7:
         proportion_df = pd.DataFrame(proportion_data, columns=proportion_columns)
         final_results_df = pd.concat([final_results_df, proportion_df], axis=1)
 
+        # ============ REPLACE WITH THIS ============
         for poll in selected_pollutants:
-            poll_df = pd.DataFrame({
-                f'{poll}_PC': emissions_data[poll]['pc'],
-                f'{poll}_LDV': emissions_data[poll]['ldv'],
-                f'{poll}_HDV': emissions_data[poll]['hdv'],
-                f'{poll}_Motorcycle': emissions_data[poll]['moto'],
-                f'{poll}_Total': emissions_data[poll]['total']
-            })
+            if export_in_converted_units and 'selected_units' in st.session_state:
+                selected_units = st.session_state.selected_units
+                target_unit = selected_units.get(poll, pollutants_available[poll]['unit'])
+                original_unit = pollutants_available[poll]['unit']
+                
+                poll_df = pd.DataFrame({
+                    f'{poll}_PC ({target_unit})': [convert_emission_value(v, poll, original_unit, target_unit) 
+                                                    for v in emissions_data[poll]['pc']],
+                    f'{poll}_LDV ({target_unit})': [convert_emission_value(v, poll, original_unit, target_unit) 
+                                                     for v in emissions_data[poll]['ldv']],
+                    f'{poll}_HDV ({target_unit})': [convert_emission_value(v, poll, original_unit, target_unit) 
+                                                     for v in emissions_data[poll]['hdv']],
+                    f'{poll}_Motorcycle ({target_unit})': [convert_emission_value(v, poll, original_unit, target_unit) 
+                                                            for v in emissions_data[poll]['moto']],
+                    f'{poll}_Total ({target_unit})': [convert_emission_value(v, poll, original_unit, target_unit) 
+                                                       for v in emissions_data[poll]['total']]
+                })
+            else:
+                poll_df = pd.DataFrame({
+                    f'{poll}_PC': emissions_data[poll]['pc'],
+                    f'{poll}_LDV': emissions_data[poll]['ldv'],
+                    f'{poll}_HDV': emissions_data[poll]['hdv'],
+                    f'{poll}_Motorcycle': emissions_data[poll]['moto'],
+                    f'{poll}_Total': emissions_data[poll]['total']
+                })
             final_results_df = pd.concat([final_results_df, poll_df], axis=1)
+        # ============ END REPLACEMENT ============
+
 
         # Convert the DataFrame to CSV format for download
         csv_export = final_results_df.to_csv(index=False).encode('utf-8')
@@ -1584,82 +2308,199 @@ with tab7:
 
         # ZIP file containing all calculated data and reports
         st.subheader("Complete Analysis Package (ZIP)")
+        
+        # IMPORTANT: Create summary_df BEFORE the button, but store it in session state
+        # This ensures it's available when the button is clicked
+        # ============ REPLACE WITH THIS ============
+        if 'summary_df_for_download' not in st.session_state or st.session_state.get('recalculate_summary', True):
+            summary_data = []
+            for poll in selected_pollutants:
+                # Determine which unit to use
+                if export_in_converted_units and 'selected_units' in st.session_state:
+                    selected_units = st.session_state.selected_units
+                    target_unit = selected_units.get(poll, pollutants_available[poll]['unit'])
+                    original_unit = pollutants_available[poll]['unit']
+                    
+                    total_pc = convert_emission_value(emissions_data[poll]['pc'].sum(), poll, original_unit, target_unit)
+                    total_ldv = convert_emission_value(emissions_data[poll]['ldv'].sum(), poll, original_unit, target_unit)
+                    total_hdv = convert_emission_value(emissions_data[poll]['hdv'].sum(), poll, original_unit, target_unit)
+                    total_moto = convert_emission_value(emissions_data[poll]['moto'].sum(), poll, original_unit, target_unit)
+                    grand_total = convert_emission_value(emissions_data[poll]['total'].sum(), poll, original_unit, target_unit)
+                    display_unit = target_unit
+                else:
+                    total_pc = emissions_data[poll]['pc'].sum()
+                    total_ldv = emissions_data[poll]['ldv'].sum()
+                    total_hdv = emissions_data[poll]['hdv'].sum()
+                    total_moto = emissions_data[poll]['moto'].sum()
+                    grand_total = emissions_data[poll]['total'].sum()
+                    display_unit = pollutants_available[poll]['unit']
+                
+                summary_data.append({
+                    'Pollutant': poll,
+                    'Total PC': format_emission_value(total_pc, display_unit),
+                    'Total LDV': format_emission_value(total_ldv, display_unit),
+                    'Total HDV': format_emission_value(total_hdv, display_unit),
+                    'Total Moto': format_emission_value(total_moto, display_unit),
+                    'Grand Total': format_emission_value(grand_total, display_unit),
+                    'Unit': display_unit
+                })
+        # ============ END REPLACEMENT ============
+            st.session_state.summary_df_for_download = pd.DataFrame(summary_data)
+            st.session_state.recalculate_summary = False
+        
+        # Now use the stored summary_df
+        summary_df = st.session_state.summary_df_for_download
+        
         if st.button("Generate & Download ZIP Report", use_container_width=True):
-            with BytesIO() as buffer:
-                with zipfile.ZipFile(buffer, 'w') as zipf:
-                    # 1. Full Results CSV
-                    zipf.writestr('full_link_results.csv', final_results_df.to_csv(index=False))
+            with st.spinner("Generating ZIP archive..."):
+                with BytesIO() as buffer:
+                    with zipfile.ZipFile(buffer, 'w') as zipf:
+                        # 1. Full Results CSV
+                        zipf.writestr('full_link_results.csv', final_results_df.to_csv(index=False))
 
-                    # 2. Statistics Summary CSV
-                    summary_data = []
-                    for poll in selected_pollutants:
-                        summary_data.append({
-                            'Pollutant': poll,
-                            'Total PC': emissions_data[poll]['pc'].sum(),
-                            'Total LDV': emissions_data[poll]['ldv'].sum(),
-                            'Total HDV': emissions_data[poll]['hdv'].sum(),
-                            'Total Moto': emissions_data[poll]['moto'].sum(),
-                            'Grand Total': emissions_data[poll]['total'].sum(),
-                            'Unit': pollutants_available[poll]['unit']
-                        })
-                    summary_df = pd.DataFrame(summary_data)
-                    zipf.writestr('statistics_summary.csv', summary_df.to_csv(index=False))
+                        # 2. Statistics Summary CSV
+                        zipf.writestr('statistics_summary.csv', summary_df.to_csv(index=False))
 
-                    # 3. Text Report
-                    report_text = f"""
-                    Traffic Emission Calculation Report
-                    Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
-                    
-                    Selected Pollutants: {', '.join(selected_pollutants)}
-                    Methodology: {calculation_method}
-                    Ambient Temperature: {ambient_temp}°C
-                    Trip Length (Cold Start): {trip_length} km
-                    
-                    --- Summary Statistics ---
-                    {summary_df.to_string(index=False)}
-                    
-                    --- Note on LDV/HDV Distribution ---
-                    This calculation used a simplified fleet distribution for Light Duty Vehicles (LDV) and Heavy Duty Vehicles (HDV) as no specific files were uploaded.
-                    LDV Fleet Composition: Defaulted to the uploaded Passenger Car (Gasoline) Euro Class Distribution.
-                    HDV Fleet Composition: Defaulted to 100% Euro VI standard and Rigid Truck < 7.5t type.
-                    
-                    --- Link Data Column Count ---
-                    Link Data File Columns: {data_link_np.shape[1]}
-                    If 7 columns, LDV/HDV flow proportions were assumed zero.
-                    If 9 columns, LDV/HDV flow proportions were read from columns 8 and 9.
-                    
-                    --- Data Preview (First 5 Rows of Full Results) ---
-                    {final_results_df.head().to_string()}
-                    """
-                    zipf.writestr('detailed_report.txt', report_text)
-                    
-                    st.success("ZIP report generated!")
+                        # 3. Fuel Type Breakdown (if available)
+                        # ============ REPLACE WITH THIS ============
+                        # 3. Fuel Type Breakdown (if available)
+                        if 'fuel_emissions_data' in st.session_state:
+                            fuel_emissions = st.session_state.fuel_emissions_data
+                            fuel_breakdown_data = []
+                            for poll in selected_pollutants:
+                                if export_in_converted_units and 'selected_units' in st.session_state:
+                                    selected_units = st.session_state.selected_units
+                                    target_unit = selected_units.get(poll, pollutants_available[poll]['unit'])
+                                    original_unit = pollutants_available[poll]['unit']
+                                    
+                                    gas_total = convert_emission_value(fuel_emissions[poll]['gasoline'].sum(), 
+                                                                       poll, original_unit, target_unit)
+                                    diesel_total = convert_emission_value(fuel_emissions[poll]['diesel'].sum(), 
+                                                                          poll, original_unit, target_unit)
+                                    display_unit = target_unit
+                                else:
+                                    gas_total = fuel_emissions[poll]['gasoline'].sum()
+                                    diesel_total = fuel_emissions[poll]['diesel'].sum()
+                                    display_unit = pollutants_available[poll]['unit']
+                                
+                                fuel_breakdown_data.append({
+                                    'Pollutant': poll,
+                                    'Gasoline_Total': format_emission_value(gas_total, display_unit),
+                                    'Diesel_Total': format_emission_value(diesel_total, display_unit),
+                                    'Unit': display_unit
+                                })
+                        # ============ END REPLACEMENT ============
+                            fuel_df = pd.DataFrame(fuel_breakdown_data)
+                            zipf.writestr('fuel_type_breakdown.csv', fuel_df.to_csv(index=False))
 
-                buffer.seek(0)
-                st.download_button(
-                    label="Download ZIP Report",
-                    data=buffer,
-                    file_name="traffic_emission_analysis.zip",
-                    mime="application/zip",
-                    key='download_zip',
-                    use_container_width=True
-                )
+                # 4. Text Report - WITH FIX
+                gasoline_avg = data_link_np[:, 4].mean()
+                diesel_avg = 1 - gasoline_avg
+                
+                # Build report text without problematic characters
+                report_text = f"""
+Traffic Emission Calculation Report
+Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+Selected Pollutants: {', '.join(selected_pollutants)}
+Methodology: {calculation_method}
+Ambient Temperature: {ambient_temp} degrees Celsius
+Trip Length (Cold Start): {trip_length} km
+Export Units: {'Converted Units' if export_in_converted_units else 'Original Units (g/km, mg/km, L/100km)'}
+"""
+                
+                # Add unit conversions if applicable
+                if export_in_converted_units and 'selected_units' in st.session_state:
+                    unit_conversions = ', '.join([f'{p}={st.session_state.selected_units.get(p)}' for p in selected_pollutants])
+                    report_text += f"Unit Conversions Applied: {unit_conversions}\n"
+                
+                report_text += f"""
+--- Summary Statistics ---
+{summary_df.to_string(index=False)}
+
+--- Fuel Type Distribution ---
+Average Gasoline Proportion: {gasoline_avg*100:.1f}%
+Average Diesel Proportion: {diesel_avg*100:.1f}%
+
+--- Note on LDV/HDV Distribution ---
+This calculation used a simplified fleet distribution for Light Duty Vehicles (LDV) and Heavy Duty Vehicles (HDV) as no specific files were uploaded.
+LDV Fleet Composition: Defaulted to the uploaded Passenger Car (Gasoline) Euro Class Distribution.
+HDV Fleet Composition: Defaulted to 100% Euro VI standard and Rigid Truck < 7.5t type.
+
+--- Link Data Column Count ---
+Link Data File Columns: {data_link_np.shape[1]}
+If 7 columns, LDV/HDV flow proportions were assumed zero.
+If 9 columns, LDV/HDV flow proportions were read from columns 8 and 9.
+
+--- Data Preview (First 10 Rows of Full Results) ---
+{final_results_df.head(10).to_string()}
+
+--- Top 5 Emitting Links ---
+"""
+                # Add top 5 links for each pollutant
+                for poll in selected_pollutants:
+                    temp_df = final_results_df.copy()
+                    temp_df['Total_Emission'] = emissions_data[poll]['total']
+                    top_5 = temp_df.nlargest(5, 'Total_Emission')[['OSM_ID', 'Total_Emission']]
+                    report_text += f"\n{poll} Top 5 Links:\n{top_5.to_string(index=False)}\n"
+
+                zipf.writestr('detailed_report.txt', report_text)
+                
+            st.success("✅ ZIP report generated successfully!")
+
+            buffer.seek(0)
+            st.download_button(
+                label="📦 Download ZIP Report",
+                data=buffer,
+                file_name="traffic_emission_analysis.zip",
+                mime="application/zip",
+                key='download_zip',
+                use_container_width=True
+            )
+        
+        # ============ REPLACE WITH THIS ============
+        st.markdown("### 📚 Export Formats")
+        
+        # Show current export settings
+        if export_in_converted_units and 'selected_units' in st.session_state:
+            st.success(f"""
+            **Current Export Settings: ✅ Converted Units**
+            
+            Your exports will use these units:
+            {chr(10).join([f"- {poll}: {st.session_state.selected_units.get(poll, pollutants_available[poll]['unit'])}" for poll in selected_pollutants])}
+            """)
+        else:
+            st.info("""
+            **Current Export Settings: ℹ️ Original Units**
+            
+            Exports will use standard COPERT units:
+            - CO, NOx, VOC: g/km
+            - CO2: g/km  
+            - PM: mg/km
+            - FC: L/100km
+            """)
         
         st.markdown("---")
-        st.markdown("### 📚 Export Formats")
         st.info("""
         **Available Export Formats:**
         - **CSV**: Comma-separated values for spreadsheet applications
         - **ZIP**: Complete analysis package with all data and documentation
         
         **Vehicle Type Breakdown:**
-        All exports now include separate columns for:
+        All exports include separate columns for:
         - PC: Passenger Cars
         - LDV: Light Duty Vehicles
         - HDV: Heavy Duty Vehicles
         - Moto: Motorcycles
         - Total: Sum of all vehicle types
+        
+        **Fuel Type Data:**
+        If fuel tracking is enabled, ZIP includes gasoline/diesel breakdown
+        
+        **Unit Conversion:**
+        Enable "Export in converted units" to use your sidebar unit selections in all exports
         """)
+        # ============ END REPLACEMENT ============
     else:
         st.info("Calculate emissions first to create download package")
 
@@ -1667,9 +2508,7 @@ with tab7:
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666; padding: 20px;'>
-    <p>Built with COPERT IV, IPCC, and EPA MOVES methodologies</p>
-    <p>Now with support for PC, LDV, HDV, and Motorcycle emissions</p>
     <p>Standards: EEA Guidebook 2019, IPCC 2019 Guidelines, WHO Air Quality Standards</p>
-    <p>© 2025 - Developed by Shassan</p>
+    <p>© 2025 - Developed by SHassan</p>
 </div>
 """, unsafe_allow_html=True)
