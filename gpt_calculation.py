@@ -24,18 +24,18 @@ st.set_page_config(page_title="Advanced Traffic Emission Calculator", layout="wi
 REPO_USER = "Olusammi"
 REPO_NAME = "traffic-emission-calculator"
 REPO_BRANCH = "main"
-# NOTE: Using "defualt" as specified in your message. Change to "default" if you rename the folder on GitHub.
+# Using "defualt" as specified. Ensure this folder exists in your repo!
 DEFAULT_FOLDER = "defualt" 
 GITHUB_BASE_URL = f"https://raw.githubusercontent.com/{REPO_USER}/{REPO_NAME}/{REPO_BRANCH}/{DEFAULT_FOLDER}/"
 
-# Mapping your variable keys to your specific filenames
+# Exact mapping of your file keys to the filenames in your 'defualt' folder
 DEFAULT_FILES_MAP = {
     "pc_param": "PC_parameter.csv",
     "ldv_param": "LDV_parameter.csv",
     "hdv_param": "HDV_parameter.csv",
     "moto_param": "Moto_parameter.csv",
     "link_osm": "link_osm_with-ldv.dat",
-    "osm_file": "selected_zone-lagos", # Logic below will handle extension if needed, usually files have extension
+    "osm_file": "selected_zone-lagos", # Application handles adding .osm extension if needed for parsing
     "engine_cap_gas": "engine_capacity_gasoline.dat",
     "engine_cap_diesel": "engine_capacity_diesel.dat",
     "copert_class_gas": "copert_class_proportion_gasoline.dat",
@@ -48,19 +48,18 @@ DEFAULT_FILES_MAP = {
 @st.cache_data(show_spinner=False)
 def load_default_file_from_github(filename):
     """Fetches a file from GitHub and returns it as a BytesIO object."""
-    # Append extension if missing for the OSM file specifically or generally
-    # For this specific case, the user listed 'selected_zone-lagos' without extension
-    # but 'link_osm_with-ldv.dat' with it. We'll assume the URL needs the full name.
     url = GITHUB_BASE_URL + filename
     try:
+        # Try fetching the exact filename
         response = requests.get(url)
-        if response.status_code != 200:
-            # Try adding .osm if it fails and looks like the osm file
-            if "selected_zone" in filename and not filename.endswith(".osm"):
-                 response = requests.get(url + ".osm")
         
-        response.raise_for_status()
-        return BytesIO(response.content)
+        # If exact filename fails and it's the OSM file, try adding .osm extension
+        if response.status_code != 200 and "selected_zone" in filename:
+             response = requests.get(url + ".osm")
+        
+        if response.status_code == 200:
+            return BytesIO(response.content)
+        return None
     except requests.exceptions.RequestException:
         return None
 
@@ -75,7 +74,8 @@ def get_file_input(label, type_list, key):
     if default_filename:
         default_content = load_default_file_from_github(default_filename)
         if default_content:
-            st.caption(f"🔹 Using default: `{default_filename}`")
+            st.success(f"🔹 Loaded default: `{default_filename}`")
+            default_content.seek(0) # Ensure we are at start of file
             return default_content
     return None
 
@@ -260,7 +260,7 @@ if st.sidebar.checkbox("Show Conversion Info", value=False):
 st.sidebar.markdown("---")
 # ==================== FILE UPLOADS ====================
 st.sidebar.header("📂 Upload Input Files")
-st.sidebar.caption("Files will automatically load from GitHub 'defualt' folder if not uploaded.")
+st.sidebar.caption("If files are not uploaded, the app attempts to load defaults from your GitHub 'defualt' folder.")
 
 copert_files = st.sidebar.expander("COPERT Parameter Files", expanded=True)
 with copert_files:
@@ -271,7 +271,7 @@ with copert_files:
 
 data_files = st.sidebar.expander("Data Files", expanded=True)
 with data_files:
-    link_osm = get_file_input("Link OSM Data (.dat or .csv)", ['dat', 'csv', 'txt'], 'link_osm')
+    link_osm = get_file_input("Link OSM Data (.dat/.csv)", ['dat', 'csv', 'txt'], 'link_osm')
     osm_file = get_file_input("OSM Network File (.osm)", ['osm'], 'osm_file')
 
 proportion_files = st.sidebar.expander("Proportion Data Files", expanded=False)
@@ -284,11 +284,6 @@ with proportion_files:
     copert_4stroke = get_file_input("4-Stroke Motorcycle", ['dat', 'txt'], 'copert_4stroke')
 
 st.sidebar.markdown("---")
-st.sidebar.info("""
-**LDV/HDV Distributions:**
-Default fleet compositions (PC Gasoline for LDV, 100% Euro VI for HDV) will be used if specific distribution files are not provided, allowing calculations to proceed.
-""")
-
 
 # Map parameters
 st.sidebar.header("🗺️ Map Parameters")
@@ -314,32 +309,54 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
 
 # ==================== UNIT CONVERSION FUNCTION ====================
 def convert_emission_value(value, pollutant, from_unit, to_unit, distance_km=None):
-    if from_unit == to_unit: return value
-    if pollutant not in unit_conversion_options: return value
+    """Convert emission values between different units"""
+    if from_unit == to_unit:
+        return value
+    
+    if pollutant not in unit_conversion_options:
+        return value
+    
     conversions = unit_conversion_options[pollutant]
-    if to_unit not in conversions: return value
+    
+    if to_unit not in conversions:
+        return value
+    
+    # Handle inverse calculations (mpg, km/L)
     if to_unit in ["mpg", "km/L"]:
-        if value == 0: return 0
-        if to_unit == "mpg": return 235.214 / value
-        elif to_unit == "km/L": return 100 / value
+        if value == 0:
+            return 0
+        if to_unit == "mpg":
+            return 235.214 / value if value != 0 else 0
+        elif to_unit == "km/L":
+            return 100 / value if value != 0 else 0
+    
+    # Handle annual conversions
     if "year" in to_unit:
         annual_distance = distance_km if distance_km else 15000  # Default 15,000 km/year
         base_value = value * conversions[to_unit]["factor"]
         return base_value * annual_distance
+    
+    # Standard conversion
     return value * conversions[to_unit]["factor"]
 
 def format_emission_value(value, unit):
-    if value == 0: return "0.00"
-    elif value < 0.001: return f"{value:.6f}"
-    elif value < 0.1: return f"{value:.4f}"
-    elif value < 10: return f"{value:.3f}"
-    elif value < 1000: return f"{value:.2f}"
-    else: return f"{value:.1f}"
+    """Format emission value based on magnitude"""
+    if value == 0:
+        return "0.00"
+    elif value < 0.001:
+        return f"{value:.6f}"
+    elif value < 0.1:
+        return f"{value:.4f}"
+    elif value < 10:
+        return f"{value:.3f}"
+    elif value < 1000:
+        return f"{value:.2f}"
+    else:
+        return f"{value:.1f}"
 
 # ==================== TAB 1: INSTRUCTIONS ====================
 with tab1:
     st.header("📖 User Guide & Instructions")
-    st.info("The app now automatically loads default files from the GitHub 'defualt' folder if no files are uploaded.")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -371,6 +388,50 @@ with tab1:
         - Detailed fleet modeling
         - Integration: US regulations
         """)
+
+    st.markdown("---")
+    st.subheader("🚀 Quick Start Guide")
+    st.markdown("""
+    ### Step-by-Step Process:
+
+    1. **Upload Required Files** (Left Sidebar)
+       - The app automatically attempts to load default files from your GitHub repository.
+       - You can override any file by uploading your own.
+
+    2. **Select Emission Metrics** (Left Sidebar)
+       - Choose pollutants to calculate
+       - Select calculation methodology
+       - Configure accuracy settings
+
+    3. **Preview Your Data** (Data Preview Tab)
+       - Verify uploaded data structure
+       - Check statistics and summaries
+
+    4. **Review Formulas** (Formula Explanation Tab)
+       - Understand calculation methods
+       - See parameter definitions
+       - Review examples
+
+    5. **Calculate Emissions** (Calculate Tab)
+       - Run emission calculations
+       - View real-time progress
+       - See detailed results
+
+    6. **Analyze Results** (Multi-Metric Analysis Tab)
+       - Compare pollutants
+       - View trends and patterns
+       - Generate insights
+
+    7. **Visualize on Map** (Interactive Map Tab)
+       - Interactive emission mapping
+       - Multiple visualization modes
+       - Road-level detail
+
+    8. **Download Results** (Download Tab)
+       - Export emission data
+       - Save visualizations
+       - Generate reports
+    """)
 
 # ==================== TAB 2: DATA PREVIEW ====================
 with tab2:
@@ -436,10 +497,18 @@ with tab2:
                                         title="Traffic Flow Distribution")
                 st.plotly_chart(fig_flow, use_container_width=True)
 
+            # Validation warnings
+            if data_link['Speed'].min() < 10:
+                st.warning(
+                    f"⚠️ {len(data_link[data_link['Speed'] < 10])} links have speed < 10 km/h. COPERT formulas may be less accurate.")
+            if data_link['Speed'].max() > 130:
+                st.warning(
+                    f"⚠️ {len(data_link[data_link['Speed'] > 130])} links have speed > 130 km/h. Consider speed caps.")
+
         except Exception as e:
             st.error(f"❌ Error reading link data: {e}")
     else:
-        st.info("👆 Please upload Link OSM Data file in the sidebar or wait for default load.")
+        st.info("👆 Please upload Link OSM Data file in the sidebar or ensure defaults are loaded.")
 
 # ==================== TAB 3: FORMULA EXPLANATION ====================
 with tab3:
@@ -475,6 +544,32 @@ with tab3:
             - **Dependency**: Vehicle type, fuel, Euro standard
             """)
 
+        st.markdown("### Example Calculation")
+        st.code("""
+# For Euro 6 Gasoline Passenger Car at 60 km/h:
+a, c, e = 11.2, -0.102, 0.000677
+b, d = 0.129, -0.000947
+V = 60
+
+EF_hot = (a + c*V + e*V**2) / (1 + b*V + d*V**2)
+EF_hot = (11.2 + (-0.102)*60 + 0.000677*3600) / (1 + 0.129*60 + (-0.000947)*3600)
+EF_hot ≈ 0.85 g/km
+        """, language='python')
+
+        if include_cold_start:
+            st.markdown("### Cold Start Correction")
+            st.latex(r'''
+            E_{total} = E_{hot} \cdot (1 - \beta) + E_{cold} \cdot \beta
+            ''')
+            st.latex(r'''
+            \beta = 0.6474 - 0.02545 \cdot L_{trip} - (0.00974 - 0.000385 \cdot L_{trip}) \cdot T_{amb}
+            ''')
+            st.markdown("""
+            - **β**: Cold mileage percentage
+            - **L<sub>trip</sub>**: Average trip length (km)
+            - **T<sub>amb</sub>**: Ambient temperature (°C)
+            """, unsafe_allow_html=True)
+
     elif formula_pollutant == "CO2":
         st.subheader("🔵 Carbon Dioxide (CO₂) Emission Formula")
 
@@ -482,6 +577,35 @@ with tab3:
         st.latex(r'''
         CO_2 = FC \cdot CF \cdot \frac{44}{12} \cdot 1000
         ''')
+
+        st.markdown("**Parameters:**")
+        st.markdown("""
+        - **FC**: Fuel consumption (L/km)
+        - **CF**: Carbon content factor
+          - Gasoline: 0.64 kg C/L
+          - Diesel: 0.68 kg C/L
+        - **44/12**: Molecular weight ratio (CO₂/C)
+        - **1000**: Convert kg to g
+        """)
+
+        st.markdown("### Speed-Dependent Fuel Consumption")
+        st.latex(r'''
+        FC(V) = a \cdot V^2 + b \cdot V + c
+        ''')
+
+        st.markdown("### Example Calculation")
+        st.code("""
+# For Gasoline vehicle at 60 km/h:
+V = 60
+a, b, c = 0.00015, -0.015, 0.8  # L/km coefficients
+CF = 0.64  # kg C/L for gasoline
+
+FC = a*V**2 + b*V + c
+FC = 0.00015*3600 - 0.015*60 + 0.8 = 0.44 L/km
+
+CO2 = FC * CF * (44/12) * 1000
+CO2 = 0.44 * 0.64 * 3.67 * 1000 ≈ 1032 g/km
+        """, language='python')
 
     elif formula_pollutant == "NOx":
         st.subheader("🟡 Nitrogen Oxides (NOx) Emission Formula")
@@ -491,6 +615,24 @@ with tab3:
         EF_{NOx} = EF_{base}(V) \cdot \left(1 + k \cdot (T_{amb} - 20)\right)
         ''')
 
+        st.markdown("**Base Emission Factor:**")
+        st.latex(r'''
+        EF_{base}(V) = \frac{a + c \cdot V + e \cdot V^2 + \frac{f}{V}}{1 + b \cdot V + d \cdot V^2}
+        ''')
+
+        st.markdown("**Parameters:**")
+        st.markdown("""
+        - **k**: Temperature coefficient (0.01-0.03 per °C)
+        - **T<sub>amb</sub>**: Ambient temperature (°C)
+        - **f/V**: Low-speed enrichment term
+        - **Diesel k ≈ 0.015, Gasoline k ≈ 0.02**
+        """, unsafe_allow_html=True)
+
+        if include_temperature_correction:
+            st.info(f"✅ Temperature correction enabled: T = {ambient_temp}°C")
+            st.latex(
+                f"Temperature \\ factor = 1 + 0.02 \\cdot ({ambient_temp} - 20) = {1 + 0.02 * (ambient_temp - 20):.3f}")
+
     elif formula_pollutant == "PM":
         st.subheader("🟣 Particulate Matter (PM) Emission Formula")
 
@@ -499,17 +641,86 @@ with tab3:
         PM_{actual} = EF_{base} \cdot (1 - \eta_{DPF}) \cdot D
         ''')
 
+        st.markdown("**Parameters:**")
+        st.markdown("""
+        - **EF<sub>base</sub>**: Base PM emission factor (mg/km)
+        - **η<sub>DPF</sub>**: Diesel Particulate Filter efficiency
+          - Euro 4: 85%
+          - Euro 5: 90%
+          - Euro 6: 95-99%
+        - **D**: Distance traveled (km)
+        """, unsafe_allow_html=True)
+
+        st.markdown("### Base Emission Factor")
+        st.latex(r'''
+        EF_{base} = a \cdot V^2 + b \cdot V + c
+        ''')
+
+        st.markdown("### Example: Euro 6 Diesel")
+        st.code("""
+# Euro 6 Diesel with DPF
+EF_base = 50  # mg/km (without DPF)
+DPF_efficiency = 0.98  # 98%
+Distance = 10  # km
+
+PM_actual = EF_base * (1 - DPF_efficiency) * Distance
+PM_actual = 50 * 0.02 * 10 = 10 mg total
+PM_per_km = 1 mg/km
+        """, language='python')
+
     elif formula_pollutant == "VOC":
         st.subheader("🟢 Volatile Organic Compounds (VOC) Formula")
+
+        st.markdown("### Total VOC = Exhaust + Evaporative")
         st.latex(r'''
         VOC_{total} = VOC_{exhaust} + VOC_{evap}
         ''')
 
+        st.markdown("**Exhaust Emissions:**")
+        st.latex(r'''
+        VOC_{exhaust} = \left(\frac{a}{V} + b + c \cdot V\right) \cdot D
+        ''')
+
+        st.markdown("**Evaporative Emissions:**")
+        st.latex(r'''
+        VOC_{evap} = k_{evap} \cdot (T_{amb} - T_{ref}) \cdot t_{soak}
+        ''')
+
+        st.markdown("**Parameters:**")
+        st.markdown("""
+        - **a/V**: Low-speed enrichment
+        - **k<sub>evap</sub>**: Evaporation rate (g/°C/hour)
+        - **t<sub>soak</sub>**: Hot soak time (hours)
+        - **T<sub>ref</sub>**: Reference temperature (20°C)
+        """, unsafe_allow_html=True)
+
     elif formula_pollutant == "FC":
         st.subheader("🟠 Fuel Consumption Formula")
+
+        st.markdown("### Quadratic Speed Model")
         st.latex(r'''
         FC = a \cdot V^2 + b \cdot V + c
         ''')
+
+        st.markdown("**Typical Coefficients (Gasoline PC):**")
+        st.markdown("""
+        - **a** ≈ 0.00015 (L/km per (km/h)²)
+        - **b** ≈ -0.015 (L/km per km/h)
+        - **c** ≈ 0.8 (L/km baseline)
+        """)
+
+        st.markdown("### Optimal Speed")
+        st.latex(r'''
+        V_{optimal} = -\frac{b}{2a} \approx 50-60 \\ km/h
+        ''')
+
+    st.markdown("---")
+    st.info("""
+    📚 **References:**
+    - EMEP/EEA Air Pollutant Emission Inventory Guidebook 2019
+    - IPCC Guidelines for National Greenhouse Gas Inventories
+    - US EPA MOVES Technical Documentation
+    """)
 
 # ==================== TAB 4: CALCULATE EMISSIONS ====================
 with tab4:
@@ -741,6 +952,82 @@ with tab4:
                         st.session_state.calc_done = True
                         st.success("✅ Multi-pollutant emissions calculated successfully!")
 
+                        # Display results summary
+                        st.subheader("📊 Emission Summary")
+                        
+                        # Get selected units
+                        selected_units = st.session_state.get('selected_units', {})
+                        unit_conversion_options = st.session_state.get('unit_conversion_options', {})
+                        
+                        # Create summary dataframe with converted units
+                        summary_data = []
+                        for poll in selected_pollutants:
+                            target_unit = selected_units.get(poll, pollutants_available[poll]['unit'])
+                            original_unit = pollutants_available[poll]['unit']
+                            
+                            # Convert values
+                            total_pc_converted = convert_emission_value(
+                                emissions_data[poll]['pc'].sum(), poll, original_unit, target_unit
+                            )
+                            total_ldv_converted = convert_emission_value(
+                                emissions_data[poll]['ldv'].sum(), poll, original_unit, target_unit
+                            )
+                            total_hdv_converted = convert_emission_value(
+                                emissions_data[poll]['hdv'].sum(), poll, original_unit, target_unit
+                            )
+                            total_moto_converted = convert_emission_value(
+                                emissions_data[poll]['moto'].sum(), poll, original_unit, target_unit
+                            )
+                            total_converted = convert_emission_value(
+                                emissions_data[poll]['total'].sum(), poll, original_unit, target_unit
+                            )
+                            avg_converted = convert_emission_value(
+                                emissions_data[poll]['total'].mean(), poll, original_unit, target_unit
+                            )
+                            max_converted = convert_emission_value(
+                                emissions_data[poll]['total'].max(), poll, original_unit, target_unit
+                            )
+                            
+                            summary_data.append({
+                                'Pollutant': poll,
+                                'Total PC': format_emission_value(total_pc_converted, target_unit),
+                                'Total LDV': format_emission_value(total_ldv_converted, target_unit),
+                                'Total HDV': format_emission_value(total_hdv_converted, target_unit),
+                                'Total Moto': format_emission_value(total_moto_converted, target_unit),
+                                'Total': format_emission_value(total_converted, target_unit),
+                                'Avg per Link': format_emission_value(avg_converted, target_unit),
+                                'Max': format_emission_value(max_converted, target_unit),
+                                'Unit': target_unit
+                            })
+                        
+                        summary_df = pd.DataFrame(summary_data)
+                        st.dataframe(summary_df, use_container_width=True)
+                        
+                        # Detailed results by pollutant
+                        for poll in selected_pollutants:
+                            with st.expander(f"📋 Detailed Results: {poll} ({pollutants_available[poll]['name']})", expanded=False):
+                                results_df = pd.DataFrame({
+                                    'OSM_ID': data_link[:, 0].astype(int),
+                                    f'{poll}_PC': emissions_data[poll]['pc'],
+                                    f'{poll}_LDV': emissions_data[poll]['ldv'],
+                                    f'{poll}_HDV': emissions_data[poll]['hdv'],
+                                    f'{poll}_Motorcycle': emissions_data[poll]['moto'],
+                                    f'{poll}_Total': emissions_data[poll]['total']
+                                })
+                                st.dataframe(results_df.head(50), use_container_width=True)
+
+                                col1, col2, col3, col4, col5 = st.columns(5)
+                                with col1:
+                                    st.metric(f"Total PC {poll}", f"{emissions_data[poll]['pc'].sum():.2f} {pollutants_available[poll]['unit']}")
+                                with col2:
+                                    st.metric(f"Total LDV {poll}", f"{emissions_data[poll]['ldv'].sum():.2f} {pollutants_available[poll]['unit']}")
+                                with col3:
+                                    st.metric(f"Total HDV {poll}", f"{emissions_data[poll]['hdv'].sum():.2f} {pollutants_available[poll]['unit']}")
+                                with col4:
+                                    st.metric(f"Total Moto {poll}", f"{emissions_data[poll]['moto'].sum():.2f} {pollutants_available[poll]['unit']}")
+                                with col5:
+                                    st.metric(f"Grand Total {poll}", f"{emissions_data[poll]['total'].sum():.2f} {pollutants_available[poll]['unit']}")
+
                 except Exception as e:
                     st.error(f"❌ An error occurred during calculation: {e}")
                     import traceback
@@ -748,7 +1035,7 @@ with tab4:
     else:
         st.info("Please ensure all required files are present to run the calculation.")
 
-# ==================== TAB 5: MULTI-METRIC ANALYSIS (ENHANCED) ====================
+# ==================== TAB 5: MULTI-METRIC ANALYSIS ====================
 with tab5:
     st.header("📈 Multi-Metric Emission Analysis")
     st.markdown("Compare emissions across different pollutants, vehicle types, and fuel types.")
@@ -769,7 +1056,7 @@ with tab5:
                                              help="Display values in your selected units from sidebar")
 
         if selected_pollutants:
-            # ===== NEW: FUEL TYPE BREAKDOWN SECTION =====
+            # ===== FUEL TYPE BREAKDOWN SECTION =====
             st.subheader("⛽ Emissions by Fuel Type")
             st.markdown("Breakdown of emissions by gasoline vs diesel vehicles")
             
@@ -802,14 +1089,22 @@ with tab5:
             fuel_type_data = []
             for poll in selected_pollutants:
                 pc_total = emissions_data[poll]['pc'].sum()
+                # For PC: split by gasoline/diesel proportion
                 pc_gas = pc_total * gasoline_prop_avg
                 pc_dsl = pc_total * diesel_prop_avg
+                
+                # For LDV: split by gasoline/diesel proportion
                 ldv_total = emissions_data[poll]['ldv'].sum()
                 ldv_gas = ldv_total * gasoline_prop_avg
                 ldv_dsl = ldv_total * diesel_prop_avg
+                
+                # HDV: Typically 100% diesel
                 hdv_total = emissions_data[poll]['hdv'].sum()
+                
+                # Motorcycles: Typically 100% gasoline
                 moto_total = emissions_data[poll]['moto'].sum()
                 
+                # Total by fuel type
                 total_gasoline = pc_gas + ldv_gas + moto_total
                 total_diesel = pc_dsl + ldv_dsl + hdv_total
                 
@@ -822,20 +1117,27 @@ with tab5:
             with col1:
                 fuel_selected_df = fuel_type_df[fuel_type_df['Pollutant'] == fuel_analysis_pollutant]
                 if fuel_chart_type == "Pie Chart":
-                    fig_fuel = px.pie(fuel_selected_df, values='Total_Emissions', names='Fuel_Type',
-                                      title=f"{fuel_analysis_pollutant} Emissions by Fuel Type",
-                                      color='Fuel_Type', color_discrete_map={'Gasoline': '#ff6b6b', 'Diesel': '#4dabf7'}, hole=0.4)
+                    fig_fuel = px.pie(
+                        fuel_selected_df, values='Total_Emissions', names='Fuel_Type',
+                        title=f"{fuel_analysis_pollutant} Emissions by Fuel Type",
+                        color='Fuel_Type', color_discrete_map={'Gasoline': '#ff6b6b', 'Diesel': '#4dabf7'}, hole=0.4
+                    )
                     fig_fuel.update_traces(textposition='inside', textinfo='percent+label')
                 else:
-                    fig_fuel = px.bar(fuel_selected_df, x='Fuel_Type', y='Total_Emissions', color='Fuel_Type',
-                                      title=f"{fuel_analysis_pollutant} Emissions by Fuel Type",
-                                      color_discrete_map={'Gasoline': '#ff6b6b', 'Diesel': '#4dabf7'})
+                    fig_fuel = px.bar(
+                        fuel_selected_df, x='Fuel_Type', y='Total_Emissions', color='Fuel_Type',
+                        title=f"{fuel_analysis_pollutant} Emissions by Fuel Type",
+                        color_discrete_map={'Gasoline': '#ff6b6b', 'Diesel': '#4dabf7'}
+                    )
                 st.plotly_chart(fig_fuel, use_container_width=True)
             
             with col2:
-                fig_fuel_bar = px.bar(fuel_type_df, x='Pollutant', y='Total_Emissions', color='Fuel_Type',
-                                      title="All Pollutants: Gasoline vs Diesel",
-                                      color_discrete_map={'Gasoline': '#ff6b6b', 'Diesel': '#4dabf7'}, barmode='group', template="plotly_white")
+                fig_fuel_bar = px.bar(
+                    fuel_type_df, x='Pollutant', y='Total_Emissions', color='Fuel_Type',
+                    title="All Pollutants: Gasoline vs Diesel",
+                    labels={'Total_Emissions': 'Total Emissions'},
+                    color_discrete_map={'Gasoline': '#ff6b6b', 'Diesel': '#4dabf7'}, barmode='group', template="plotly_white"
+                )
                 st.plotly_chart(fig_fuel_bar, use_container_width=True)
             
             st.markdown("**Detailed Fuel Type Breakdown**")
@@ -844,13 +1146,18 @@ with tab5:
                 poll_fuel_data = fuel_type_df[fuel_type_df['Pollutant'] == poll]
                 gas_row = poll_fuel_data[poll_fuel_data['Fuel_Type'] == 'Gasoline'].iloc[0]
                 dsl_row = poll_fuel_data[poll_fuel_data['Fuel_Type'] == 'Diesel'].iloc[0]
+                
                 fuel_summary.append({
                     'Pollutant': poll,
-                    'Gasoline Emissions': f"{gas_row['Total_Emissions']:.2f}", 'Gasoline %': f"{gas_row['Percentage']:.1f}%",
-                    'Diesel Emissions': f"{dsl_row['Total_Emissions']:.2f}", 'Diesel %': f"{dsl_row['Percentage']:.1f}%",
+                    'Gasoline Emissions': f"{gas_row['Total_Emissions']:.2f}",
+                    'Gasoline %': f"{gas_row['Percentage']:.1f}%",
+                    'Diesel Emissions': f"{dsl_row['Total_Emissions']:.2f}",
+                    'Diesel %': f"{dsl_row['Percentage']:.1f}%",
                     'Unit': pollutants_available[poll]['unit']
                 })
-            st.dataframe(pd.DataFrame(fuel_summary), use_container_width=True)
+            
+            fuel_summary_df = pd.DataFrame(fuel_summary)
+            st.dataframe(fuel_summary_df, use_container_width=True)
             
             st.markdown("---")
             
@@ -859,54 +1166,81 @@ with tab5:
             
             breakdown_data = []
             for poll in selected_pollutants:
-                for v in ['pc', 'ldv', 'hdv', 'moto']:
-                    breakdown_data.append({'Pollutant': poll, 'Vehicle_Type': v.upper(), 'Total_Emissions': emissions_data[poll][v].sum()})
+                for v_type in ['pc', 'ldv', 'hdv', 'moto']:
+                    breakdown_data.append({
+                        'Pollutant': poll,
+                        'Vehicle_Type': v_type.upper(),
+                        'Total_Emissions': emissions_data[poll][v_type].sum()
+                    })
+
             breakdown_df = pd.DataFrame(breakdown_data)
             
-            fig_breakdown = px.bar(breakdown_df, x='Pollutant', y='Total_Emissions', color='Vehicle_Type',
-                                   title="Total Emissions by Vehicle Type", template="plotly_white")
+            fig_breakdown = px.bar(
+                breakdown_df, x='Pollutant', y='Total_Emissions', color='Vehicle_Type',
+                title="Total Emissions by Vehicle Type",
+                labels={'Total_Emissions': 'Total Emissions (Sum of g/km * Flow)', 'Pollutant': 'Pollutant'},
+                hover_data=['Total_Emissions', 'Vehicle_Type'], template="plotly_white"
+            )
             st.plotly_chart(fig_breakdown, use_container_width=True)
             
             c_sel_v, c_chart_v = st.columns([2,1])
             with c_sel_v:
-                vehicle_analysis_pollutant = st.selectbox("Select Pollutant for Vehicle Type Chart", options=selected_pollutants, key='vehicle_pie_select')
+                vehicle_analysis_pollutant = st.selectbox(
+                    "Select Pollutant for Vehicle Type Chart",
+                    options=selected_pollutants,
+                    key='vehicle_pie_select'
+                )
             with c_chart_v:
                 veh_chart_type = st.selectbox("Chart Type", ["Pie Chart", "Bar Chart"], key="veh_chart_select")
             
             vehicle_selected_df = breakdown_df[breakdown_df['Pollutant'] == vehicle_analysis_pollutant]
+            
             color_map = {'PC': '#667eea', 'LDV': '#f59e0b', 'HDV': '#ef4444', 'MOTO': '#10b981', 'MOTORCYCLE': '#10b981'}
             
             if veh_chart_type == "Pie Chart":
-                fig_vehicle = px.pie(vehicle_selected_df, values='Total_Emissions', names='Vehicle_Type',
-                                     title=f"{vehicle_analysis_pollutant} Emissions by Vehicle Type",
-                                     color='Vehicle_Type', color_discrete_map=color_map, hole=0.4)
+                fig_vehicle = px.pie(
+                    vehicle_selected_df, values='Total_Emissions', names='Vehicle_Type',
+                    title=f"{vehicle_analysis_pollutant} Emissions by Vehicle Type",
+                    color='Vehicle_Type', color_discrete_map=color_map, hole=0.4
+                )
                 fig_vehicle.update_traces(textposition='inside', textinfo='percent+label')
             else:
-                fig_vehicle = px.bar(vehicle_selected_df, x='Vehicle_Type', y='Total_Emissions', color='Vehicle_Type',
-                                     title=f"{vehicle_analysis_pollutant} Emissions by Vehicle Type",
-                                     color_discrete_map=color_map)
+                fig_vehicle = px.bar(
+                    vehicle_selected_df, x='Vehicle_Type', y='Total_Emissions', color='Vehicle_Type',
+                    title=f"{vehicle_analysis_pollutant} Emissions by Vehicle Type",
+                    color_discrete_map=color_map
+                )
             st.plotly_chart(fig_vehicle, use_container_width=True)
 
             st.markdown("---")
             
             # ===== LINK RANKING SECTION =====
             st.subheader("🔝 Top 10 Links by Total Emission")
+            
             ranking_pollutant = st.selectbox("Select Pollutant to Rank by", options=selected_pollutants)
 
             if ranking_pollutant in emissions_data:
                 ranking_data = pd.DataFrame(st.session_state.data_link[:, :4], columns=['OSM_ID', 'Length_km', 'Flow', 'Speed'])
                 ranking_data[f'Total_{ranking_pollutant}'] = emissions_data[ranking_pollutant]['total']
+
                 top_10_df = ranking_data.sort_values(by=f'Total_{ranking_pollutant}', ascending=False).head(10)
-                top_10_df['OSM_ID'] = top_10_df['OSM_ID'].astype(int)
+                top_10_df['OSM_ID'] = top_10_df['OSM_ID'].astype(int).astype(str) # String for categorical axis
 
                 st.dataframe(top_10_df, use_container_width=True)
-                fig_top_10 = px.bar(top_10_df, x='OSM_ID', y=f'Total_{ranking_pollutant}', color='Speed',
-                                    title=f"Top 10 Links Emitting {ranking_pollutant}", template="plotly_white")
+
+                fig_top_10 = px.bar(top_10_df, 
+                                    x='OSM_ID', 
+                                    y=f'Total_{ranking_pollutant}', 
+                                    color='Speed',
+                                    title=f"Top 10 Links Emitting {ranking_pollutant}",
+                                    labels={f'Total_{ranking_pollutant}': f"Total {ranking_pollutant} (g/km)"},
+                                    template="plotly_white")
                 st.plotly_chart(fig_top_10, use_container_width=True)
             
             # ===== COMPARATIVE INSIGHTS =====
             st.markdown("---")
             st.subheader("💡 Comparative Insights")
+            
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown("**🔍 Key Findings:**")
@@ -915,25 +1249,35 @@ with tab5:
                     ldv = emissions_data[poll]['ldv'].sum()
                     hdv = emissions_data[poll]['hdv'].sum()
                     moto = emissions_data[poll]['moto'].sum()
-                    totals = {'PC': pc, 'LDV': ldv, 'HDV': hdv, 'Motorcycle': moto}
-                    dom = max(totals, key=totals.get)
-                    dom_pct = totals[dom]/sum(totals.values())*100
-                    st.markdown(f"**{poll}**: {dom} contributes **{dom_pct:.1f}%** of total emissions")
+                    
+                    vehicle_totals = {'PC': pc, 'LDV': ldv, 'HDV': hdv, 'Motorcycle': moto}
+                    dominant_vehicle = max(vehicle_totals, key=vehicle_totals.get)
+                    dominant_percentage = (vehicle_totals[dominant_vehicle] / sum(vehicle_totals.values())) * 100
+                    
+                    st.markdown(f"""
+                    **{poll}**: {dominant_vehicle} contributes **{dominant_percentage:.1f}%** of total emissions
+                    """)
+            
             with col2:
                 st.markdown("**⛽ Fuel Type Insights:**")
                 for poll in selected_pollutants:
-                    row = fuel_type_df[fuel_type_df['Pollutant'] == poll]
-                    gas = row[row['Fuel_Type']=='Gasoline']['Percentage'].iloc[0]
-                    dsl = row[row['Fuel_Type']=='Diesel']['Percentage'].iloc[0]
-                    dom_fuel = 'Gasoline' if gas > dsl else 'Diesel'
-                    st.markdown(f"**{poll}**: {dom_fuel} vehicles contribute **{max(gas, dsl):.1f}%**")
+                    poll_fuel_data = fuel_type_df[fuel_type_df['Pollutant'] == poll]
+                    gasoline_pct = poll_fuel_data[poll_fuel_data['Fuel_Type'] == 'Gasoline']['Percentage'].iloc[0]
+                    diesel_pct = poll_fuel_data[poll_fuel_data['Fuel_Type'] == 'Diesel']['Percentage'].iloc[0]
+                    
+                    dominant_fuel = 'Gasoline' if gasoline_pct > diesel_pct else 'Diesel'
+                    dominant_fuel_pct = max(gasoline_pct, diesel_pct)
+                    
+                    st.markdown(f"""
+                    **{poll}**: {dominant_fuel} vehicles contribute **{dominant_fuel_pct:.1f}%**
+                    """)
 
         else:
             st.info("No pollutants selected for analysis.")
     else:
         st.info("Please calculate emissions first in the 'Calculate Emissions' tab.")
 
-# ==================== TAB 6: INTERACTIVE MAP (IMPROVED) ====================
+# ==================== TAB 6: INTERACTIVE MAP ====================
 with tab6:
     st.header("🗺️ Interactive Map")
     
@@ -948,6 +1292,7 @@ with tab6:
                 with st.spinner("Parsing OSM network for interactive map... (This happens once)"):
                     try:
                         import osm_network
+                        import tempfile, os
                         
                         # Prepare temp file from BytesIO
                         with tempfile.NamedTemporaryFile(delete=False, suffix='.osm') as tmp:
