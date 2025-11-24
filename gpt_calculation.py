@@ -40,7 +40,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🚗 Advanced Traffic Emission Calculator")
+st.title("Vehicle Emission Calculator")
 st.caption("Multi-Standard Emission Analysis with COPERT IV, IPCC, and EPA Methodologies")
 st.markdown("---")
 
@@ -2508,10 +2508,8 @@ If 9 columns, LDV/HDV flow proportions were read from columns 8 and 9.
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666; padding: 20px;'>
-    <p>Built with COPERT IV, IPCC, and EPA MOVES methodologies</p>
-    <p>Now with support for PC, LDV, HDV, and Motorcycle emissions</p>
     <p>Standards: EEA Guidebook 2019, IPCC 2019 Guidelines, WHO Air Quality Standards</p>
-    <p>© 2025 - Developed by Shassan</p>
+    <p>© 2025 - Developed by SHassan</p>
 </div>
 """, unsafe_allow_html=True)
 
