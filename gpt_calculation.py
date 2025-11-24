@@ -1091,7 +1091,7 @@ with tab5:
             with c_chart:
                 fuel_chart_type = st.selectbox("Chart Type", ["Pie Chart", "Bar Chart"], key="fuel_chart_select")
             
-            fuel_type_data = []
+                fuel_type_data = []
             for poll in selected_pollutants:
                 pc_total = emissions_data[poll]['pc'].sum()
                 # For PC: split by gasoline/diesel proportion
@@ -1112,9 +1112,19 @@ with tab5:
                 # Total by fuel type
                 total_gasoline = pc_gas + ldv_gas + moto_total
                 total_diesel = pc_dsl + ldv_dsl + hdv_total
+                grand = total_gasoline + total_diesel # Corrected variable names
                 
-                fuel_type_data.append({'Pollutant': poll, 'Fuel_Type': 'Gasoline', 'Total_Emissions': total_gas, 'Percentage': total_gas/(total_gasoline+total_diesel)*100})
-                fuel_type_data.append({'Pollutant': poll, 'Fuel_Type': 'Diesel', 'Total_Emissions': total_diesel, 'Percentage': total_diesel/(total_gasoline+total_diesel)*100})
+                # --- FIX: Handle Zero Division ---
+                if grand > 0:
+                    gas_pct = total_gasoline / grand * 100
+                    dsl_pct = total_diesel / grand * 100
+                else:
+                    gas_pct = 0.0
+                    dsl_pct = 0.0
+                # ---------------------------------
+                
+                fuel_type_data.append({'Pollutant': poll, 'Fuel_Type': 'Gasoline', 'Total_Emissions': total_gasoline, 'Percentage': gas_pct})
+                fuel_type_data.append({'Pollutant': poll, 'Fuel_Type': 'Diesel', 'Total_Emissions': total_diesel, 'Percentage': dsl_pct})
             
             fuel_type_df = pd.DataFrame(fuel_type_data)
             
