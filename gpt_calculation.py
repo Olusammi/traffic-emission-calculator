@@ -154,9 +154,9 @@ st.sidebar.header("🎯 Accuracy Settings")
 include_temperature_correction = st.sidebar.checkbox("Temperature Correction", value=True,
                                                      help="Apply ambient temperature corrections to NOx emissions")
 include_cold_start = st.sidebar.checkbox("Cold Start Emissions", value=True,
-                                         help="Include cold start emission quotient")
+                                          help="Include cold start emission quotient")
 include_slope_correction = st.sidebar.checkbox("Road Slope Correction", value=False,
-                                               help="Apply road gradient corrections")
+                                                help="Apply road gradient corrections")
 
 if include_temperature_correction:
     ambient_temp = st.sidebar.slider("Ambient Temperature (°C)", -10, 40, 25)
@@ -1058,7 +1058,7 @@ with tab5:
             st.markdown("Select analysis views below")
         with col2:
             use_converted_units = st.checkbox("Use Converted Units", value=True, 
-                                             help="Display values in your selected units from sidebar")
+                                              help="Display values in your selected units from sidebar")
 
         if selected_pollutants:
             # ===== FUEL TYPE BREAKDOWN SECTION =====
@@ -1211,14 +1211,16 @@ with tab5:
                     color='Vehicle_Type', color_discrete_map=color_map, hole=0.4
                 )
                 fig_vehicle.update_traces(textposition='inside', textinfo='percent+label')
-                st.plotly_chart(fig_vehicle, use_container_width=True)
+                # FIX: Added unique key
+                st.plotly_chart(fig_vehicle, use_container_width=True, key="veh_type_pie")
             else:
                 fig_vehicle = px.bar(
                     vehicle_selected_df, x='Vehicle_Type', y='Total_Emissions', color='Vehicle_Type',
                     title=f"{vehicle_analysis_pollutant} Emissions by Vehicle Type",
                     color_discrete_map=color_map
                 )
-            st.plotly_chart(fig_vehicle, use_container_width=True)
+                # FIX: Added unique key
+                st.plotly_chart(fig_vehicle, use_container_width=True, key="veh_type_bar")
 
             # Original bar chart for ALL pollutants
             fig_breakdown = px.bar(breakdown_df, x='Pollutant', y='Total_Emissions', color='Vehicle_Type',
