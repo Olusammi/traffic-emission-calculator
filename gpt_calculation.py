@@ -24,11 +24,11 @@ st.set_page_config(page_title="Advanced Traffic Emission Calculator", layout="wi
 REPO_USER = "Olusammi"
 REPO_NAME = "traffic-emission-calculator"
 REPO_BRANCH = "main"
-# Using "defualt" as specified. Ensure this folder exists in your repo!
+# FIXED: Updated folder name to 'default'
 DEFAULT_FOLDER = "default" 
 GITHUB_BASE_URL = f"https://raw.githubusercontent.com/{REPO_USER}/{REPO_NAME}/{REPO_BRANCH}/{DEFAULT_FOLDER}/"
 
-# Exact mapping of your file keys to the filenames in your 'defualt' folder
+# Exact mapping of your file keys to the filenames in your 'default' folder
 DEFAULT_FILES_MAP = {
     "pc_param": "PC_parameter.csv",
     "ldv_param": "LDV_parameter.csv",
@@ -260,7 +260,7 @@ if st.sidebar.checkbox("Show Conversion Info", value=False):
 st.sidebar.markdown("---")
 # ==================== FILE UPLOADS ====================
 st.sidebar.header("📂 Upload Input Files")
-st.sidebar.caption("If files are not uploaded, the app attempts to load defaults from your GitHub 'defualt' folder.")
+st.sidebar.caption("Files will automatically load from GitHub 'default' folder if not uploaded.")
 
 copert_files = st.sidebar.expander("COPERT Parameter Files", expanded=True)
 with copert_files:
