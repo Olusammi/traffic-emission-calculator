@@ -46,7 +46,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🚗 Traffic Emission Intelligence Dashboard")
-st.caption("Advanced Calculation & Interactive Visualization v2.2")
+st.caption("Advanced Calculation & Interactive Visualization v2.3")
 
 # ==================== CONSTANTS & CONFIG ====================
 POLLUTANTS_AVAILABLE = {
@@ -114,7 +114,7 @@ y_max = c2.number_input("Max Lat", value=6.46934, format="%.5f")
 tolerance = st.sidebar.number_input("Tolerance", value=0.005, format="%.3f")
 ncore = st.sidebar.number_input("Cores", value=8, min_value=1, max_value=16)
 
-# Reset Button (Fix for Stale State)
+# Reset Button
 st.sidebar.markdown("---")
 if st.sidebar.button("⚠️ Reset App State"):
     st.session_state.clear()
@@ -140,8 +140,6 @@ with tab1:
     3. **Explore**: 
        - Use **Interactive Map** for spatial analysis.
        - Use **Analysis** tab for deep-dive charts.
-    
-    **Note:** If you encounter errors after changing settings, try clicking **Reset App State** in the sidebar.
     """)
 
 # --- TAB 2: PREVIEW ---
@@ -223,7 +221,6 @@ with tab3:
                         prog = st.progress(0)
                         
                         # === CALCULATION LOOP ===
-                        # Copert Setup
                         engines = [cop.engine_type_gasoline, cop.engine_type_diesel]
                         caps = [cop.engine_capacity_0p8_to_1p4, cop.engine_capacity_1p4_to_2]
                         classes = [cop.class_PRE_ECE, cop.class_ECE_15_00_or_01, cop.class_ECE_15_02, cop.class_ECE_15_03,
@@ -248,7 +245,7 @@ with tab3:
                                 pc_sum = moto_sum = gas_sum = dsl_sum = 0.0
 
                                 # PC Calculation
-                                for t in range(2): # 0=Gas, 1=Diesel
+                                for t in range(2): 
                                     for c_idx, cls in enumerate(classes):
                                         for k in range(2):
                                             if t==1 and k==0 and cls in range(cop.class_Euro_1, cop.class_Euro_3+1): continue
@@ -270,14 +267,13 @@ with tab3:
                                         if m==0 and mc >= cop.class_moto_Euro_1: continue
                                         try: ef = cop.EFMotorcycle(p_type, V, m_eng[m], mc)
                                         except: ef = 0.0
-                                        # EFMotorcycle returns g/km, calculate total
                                         val = ef * m_dist_arr[m] * (1.0-prop_pc) * Flow
                                         moto_sum += val
                                         gas_sum += val
                                 
                                 emissions[p_name]['pc'][i] = pc_sum
                                 emissions[p_name]['moto'][i] = moto_sum
-                                emissions[p_name]['total'][i] = pc_sum + moto_sum # + ldv + hdv (simplified for now)
+                                emissions[p_name]['total'][i] = pc_sum + moto_sum 
                                 fuel_emissions[p_name]['gas'][i] = gas_sum
                                 fuel_emissions[p_name]['diesel'][i] = dsl_sum
 
@@ -286,7 +282,7 @@ with tab3:
                         # Store in Session State
                         st.session_state.emissions_data = emissions
                         st.session_state.fuel_data = fuel_emissions
-                        st.session_state.link_df = link_df  # Store DF here
+                        st.session_state.link_df = link_df 
                         st.session_state.calc_done = True
                         
                         st.success("✅ Calculation Complete!")
@@ -314,7 +310,6 @@ with tab3:
 with tab4:
     st.header("🗺️ Interactive Map")
     
-    # SAFETY CHECK: Ensure link_df exists
     if st.session_state.get('calc_done') and 'link_df' in st.session_state and st.session_state.get('geo_data'):
         # Controls
         c1, c2, c3 = st.columns([1, 1, 2])
@@ -330,10 +325,8 @@ with tab4:
         emis = st.session_state.emissions_data[map_poll]['total']
         link_df = st.session_state.link_df
         
-        # Create Mapping
         id_to_idx = {int(row[0]): i for i, row in enumerate(link_df.values)}
         
-        # Filtering controls
         with c3:
             st.markdown("**Filters**")
             f_speed = st.slider("Filter Speed (km/h)", 0, 130, (0, 130))
@@ -351,7 +344,13 @@ with tab4:
         
         map_df = pd.DataFrame(map_rows)
         if not map_df.empty:
-            map_df['quartile'] = pd.qcut(map_df['val'], 4, labels=["Low", "Medium", "High", "Critical"], duplicates='drop')
+            # === ROBUST QUANTILE/BINNING LOGIC ===
+            try:
+                # Try standard quantile cut
+                map_df['quartile'] = pd.qcut(map_df['val'], 4, labels=["Low", "Medium", "High", "Critical"], duplicates='drop')
+            except ValueError:
+                # Fallback to linear cut if quantiles fail (e.g. mostly zeros)
+                map_df['quartile'] = pd.cut(map_df['val'], 4, labels=["Low", "Medium", "High", "Critical"])
             
             # Colors based on selection
             if color_theme == "Jet": colors = px.colors.sequential.Jet
@@ -359,11 +358,14 @@ with tab4:
             elif color_theme == "Reds": colors = px.colors.sequential.Reds
             else: colors = px.colors.sequential.Plasma
             
-            # Create a trace per quartile
             qs = map_df['quartile'].unique()
+            # Sort quartiles if they are categorical
+            if hasattr(qs, 'sort_values'):
+                qs = qs.sort_values()
+                
             fig = go.Figure()
             
-            for i, q in enumerate(sorted(qs)):
+            for i, q in enumerate(qs):
                 subset = map_df[map_df['quartile'] == q]
                 c_lats, c_lons = [], []
                 for cs in subset['coords']:
@@ -381,7 +383,7 @@ with tab4:
                     hoverinfo='skip'
                 ))
             
-            # Tooltip Layer
+            # Tooltips
             mid_lats = [c[len(c)//2][1] for c in map_df['coords']]
             mid_lons = [c[len(c)//2][0] for c in map_df['coords']]
             hover_txt = [f"<b>{r['name']}</b><br>ID: {r['oid']}<br>E: {r['val']:.2f}<br>V: {r['speed']}" for _, r in map_df.iterrows()]
@@ -413,23 +415,13 @@ with tab4:
 with tab5:
     st.header("📈 Deep Dive Analysis")
     
-    # SAFETY CHECK: Ensure link_df exists
     if st.session_state.get('calc_done') and 'link_df' in st.session_state:
-        # Prepare Analysis DF
         df = st.session_state.link_df.copy()
         df.columns = ['OSM_ID','Length','Flow','Speed','Gas_Prop','PC_Prop','4S_Prop'] + (['LDV','HDV'] if df.shape[1]==9 else [])
         
-        # Dropdown for Chart Selection
-        chart_type = st.selectbox(
-            "Select Analysis View", 
-            [
-                "Emission Sources (Vehicle Split)",
-                "Fuel Contribution (Gas vs Diesel)",
-                "Speed vs Emission Efficiency",
-                "Inequality Analysis (Lorenz Curve)",
-                "Top Polluting Roads"
-            ]
-        )
+        chart_type = st.selectbox("Select Analysis View", 
+            ["Emission Sources (Vehicle Split)", "Fuel Contribution (Gas vs Diesel)", 
+             "Speed vs Emission Efficiency", "Inequality Analysis (Lorenz Curve)", "Top Polluting Roads"])
         
         target_poll = st.selectbox("Select Pollutant", selected_pollutants, key="an_poll")
         total_vals = st.session_state.emissions_data[target_poll]
@@ -464,10 +456,8 @@ with tab5:
         elif chart_type == "Speed vs Emission Efficiency":
             df['Total_E'] = total_vals['total']
             fig = px.scatter(
-                df, x='Speed', y='Total_E',
-                color='Flow', size='Flow',
-                hover_data=['OSM_ID'],
-                title=f"Speed vs {target_poll} Emission",
+                df, x='Speed', y='Total_E', color='Flow', size='Flow',
+                hover_data=['OSM_ID'], title=f"Speed vs {target_poll} Emission",
                 labels={'Total_E': f'Emission ({POLLUTANTS_AVAILABLE[target_poll]["unit"]})'},
                 color_continuous_scale='Viridis'
             )
@@ -480,7 +470,7 @@ with tab5:
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=x_axis, y=cum_vals, mode='lines', name='Actual Distribution'))
             fig.add_trace(go.Scatter(x=[0,1], y=[0,1], mode='lines', name='Perfect Equality', line=dict(dash='dash')))
-            fig.update_layout(title="Lorenz Curve (Emission Inequality)", xaxis_title="Cumulative % of Roads", yaxis_title="Cumulative % of Emissions")
+            fig.update_layout(title="Lorenz Curve", xaxis_title="Cumulative % of Roads", yaxis_title="Cumulative % of Emissions")
             st.plotly_chart(fig, use_container_width=True)
             
         elif chart_type == "Top Polluting Roads":
@@ -488,10 +478,8 @@ with tab5:
             top_10 = df.nlargest(10, 'Total_E')
             top_10['Road_Label'] = top_10['OSM_ID'].astype(str)
             fig = px.bar(
-                top_10, x='Road_Label', y='Total_E',
-                color='Speed',
-                title=f"Top 10 Roads by {target_poll}",
-                labels={'Total_E': 'Emission'}
+                top_10, x='Road_Label', y='Total_E', color='Speed',
+                title=f"Top 10 Roads by {target_poll}", labels={'Total_E': 'Emission'}
             )
             st.plotly_chart(fig, use_container_width=True)
             
@@ -525,4 +513,4 @@ with tab6:
 
 # Footer
 st.markdown("---")
-st.caption("Developed by SHassan | v2.2")
+st.caption("Developed by SHassan | v2.3")
