@@ -9,14 +9,14 @@ import zipfile
 from io import BytesIO
 import time
 
-# Import local modules (Must be in the same directory)
+# Import local modules
 try:
     import copert
     import osm_network
 except ImportError:
     st.error("Critical modules (copert.py, osm_network.py) not found. Please ensure they are in the application directory.")
 
-# ==================== CONFIGURATION & STYLING ====================
+# ==================== CONFIGURATION ====================
 st.set_page_config(
     page_title="Traffic Emission Intelligence",
     layout="wide",
@@ -24,36 +24,21 @@ st.set_page_config(
     page_icon="🚗"
 )
 
-# Custom CSS for "Power BI" feel
+# Custom CSS for PowerBI-like look
 st.markdown("""
 <style>
-    /* Main container padding */
     .block-container { padding-top: 1rem; padding-bottom: 2rem; }
-    
-    /* Card styling */
     .metric-card {
-        background-color: #ffffff;
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        padding: 15px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        text-align: center;
+        background-color: white; border: 1px solid #e0e0e0; border-radius: 8px;
+        padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); text-align: center;
     }
-    .metric-value { font-size: 24px; font-weight: bold; color: #1f77b4; }
-    .metric-label { font-size: 14px; color: #666; }
-    
-    /* Headers */
     h1, h2, h3 { font-family: 'Segoe UI', sans-serif; font-weight: 600; }
-    
-    /* Sidebar styling */
     section[data-testid="stSidebar"] { background-color: #f8f9fa; }
-    
-    /* Plot containers */
     .stPlotlyChart { border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
 </style>
 """, unsafe_allow_html=True)
 
-# ==================== CONSTANTS & MAPPINGS ====================
+# ==================== CONSTANTS ====================
 POLLUTANTS_AVAILABLE = {
     "CO": {"name": "Carbon Monoxide", "unit": "g/km", "color": "#ef4444"},
     "CO2": {"name": "Carbon Dioxide", "unit": "g/km", "color": "#3b82f6"},
@@ -72,28 +57,21 @@ UNIT_CONVERSIONS = {
     "FC": {"L/100km": 1.0, "L/km": 0.01}
 }
 
-# ==================== HELPER FUNCTIONS ====================
+# ==================== LOGIC FUNCTIONS ====================
 def convert_value(val, pollutant, target_unit):
-    """Handles unit conversion based on predefined factors."""
     if pollutant in UNIT_CONVERSIONS and target_unit in UNIT_CONVERSIONS[pollutant]:
         return val * UNIT_CONVERSIONS[pollutant][target_unit]
     return val
 
 @st.cache_data(show_spinner=False)
 def parse_osm_data(osm_content_bytes, zone, tolerance, ncore):
-    """Parses OSM file and returns road geometry. Cached."""
     with tempfile.NamedTemporaryFile(delete=False, suffix='.osm') as tmp:
         tmp.write(osm_content_bytes)
         tmp_path = tmp.name
-    
     try:
-        coords, osmids, names, types = osm_network.retrieve_highway(
-            tmp_path, zone, tolerance, ncore
-        )
-        return coords, osmids, names, types
+        return osm_network.retrieve_highway(tmp_path, zone, tolerance, ncore)
     finally:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+        if os.path.exists(tmp_path): os.unlink(tmp_path)
 
 @st.cache_data(show_spinner=False)
 def perform_calculation(
@@ -102,8 +80,6 @@ def perform_calculation(
     _ec_gas, _ec_diesel, _cc_gas, _cc_diesel, _c_2s, _c_4s,
     selected_polls, ambient_temp, trip_len, use_temp_corr, use_cold_start
 ):
-    """Core COPERT calculation logic."""
-    
     with tempfile.TemporaryDirectory() as tmpdir:
         paths = {}
         for name, content in [('pc', _pc_file), ('ldv', _ldv_file), ('hdv', _hdv_file), ('moto', _moto_file)]:
@@ -150,7 +126,6 @@ def perform_calculation(
                        'moto': np.zeros(Nlink), 'total': np.zeros(Nlink)} for p in selected_polls}
         fuel_results = {p: {'gas': np.zeros(Nlink), 'diesel': np.zeros(Nlink)} for p in selected_polls}
 
-        # Optimized calculation loop
         for i in range(Nlink):
             L = data_link[i, 1]
             Flow = data_link[i, 2]
@@ -245,13 +220,13 @@ def perform_calculation(
 
     return results, fuel_results
 
-# ==================== MAIN UI LAYOUT ====================
+# ==================== MAIN UI ====================
 
 # --- SIDEBAR ---
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/traffic-jam.png", width=64)
     st.title("Traffic Emission Calculator")
-    st.caption("v2.1 | Research Grade")
+    st.caption("v2.2 | Research Grade")
     
     st.markdown("### 1. Data Configuration")
     with st.expander("📂 Parameter Files", expanded=True):
@@ -288,10 +263,9 @@ with st.sidebar:
     ymin = c1.number_input("Min Lat", value=6.43744, format="%.5f")
     ymax = c2.number_input("Max Lat", value=6.46934, format="%.5f")
 
-# --- DASHBOARD VIEW ---
+# --- MAIN DASHBOARD ---
 st.title("📊 Traffic Emission Intelligence Dashboard")
 
-# Check inputs
 req_files = [pc_param, ldv_param, hdv_param, moto_param, link_osm, osm_file, ec_gas, ec_dsl, cc_gas, cc_dsl, c_2s, c_4s]
 if not all(req_files):
     st.info("👋 Welcome! Please upload all required parameter and network files in the sidebar to begin.")
@@ -307,7 +281,7 @@ except Exception as e:
     st.error(f"Error reading Link Data: {e}")
     st.stop()
 
-# --- CALCULATION TRIGGER ---
+# --- CALCULATION ---
 if 'calc_results' not in st.session_state:
     st.session_state.calc_done = False
 
@@ -325,11 +299,11 @@ if st.sidebar.button("🚀 Run Simulation", type="primary"):
         zone = [[xmin, ymax], [xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]]
         coords, osmids, names, types = parse_osm_data(osm_file.getvalue(), zone, 0.005, 8)
         
-        # Build Geometry Lookups
+        # Maps
         geom_map = {oid: c for oid, c in zip(osmids, coords)}
         name_map = {oid: n for oid, n in zip(osmids, names)}
         
-        # Prepare Analysis Dataframe
+        # DataFrame
         analysis_data = link_df.copy()
         analysis_data.columns = ['OSM_ID', 'Len', 'Flow', 'Speed', 'Prop_Gas', 'Prop_PC', 'Prop_4S'] + (['Prop_LDV', 'Prop_HDV'] if link_df.shape[1]==9 else [])
         for p in sel_pollutants:
@@ -340,10 +314,8 @@ if st.sidebar.button("🚀 Run Simulation", type="primary"):
         st.session_state.name_map = name_map
         st.session_state.calc_done = True
 
-# --- DASHBOARD VIEW ---
 if st.session_state.get('calc_done', False):
     
-    # Unit Selector
     st.sidebar.markdown("### 5. Display Units")
     units = {}
     for p in sel_pollutants:
@@ -353,69 +325,53 @@ if st.session_state.get('calc_done', False):
 
     tab_map, tab_charts, tab_data = st.tabs(["🗺️ Interactive Map", "📈 Deep Dive Analysis", "📥 Data Export"])
     
-    # 1. INTERACTIVE MAP
+    # 1. MAP
     with tab_map:
         c_ctrl, c_viz = st.columns([1, 4])
         
         with c_ctrl:
-            st.markdown("#### Map Layers")
-            map_pollutant = st.selectbox("Pollutant Layer", sel_pollutants)
-            map_style = st.selectbox("Base Style", ["carto-positron", "open-street-map", "carto-darkmatter"])
+            st.markdown("#### Layers")
+            map_pollutant = st.selectbox("Pollutant", sel_pollutants)
+            map_style = st.selectbox("Base Map", ["carto-positron", "open-street-map", "carto-darkmatter"])
+            # Updated Map Color Options
+            color_option = st.selectbox("Color Scale", ["Jet (Blue-Red)", "White-Red", "Viridis", "Inferno"], index=0)
             
-            st.markdown("#### Color Scheme")
-            color_option = st.selectbox("Color Scale", ["Jet (Blue-Red)", "White-Red", "Viridis", "Plasma", "Inferno"])
-            
-            # Map color scale selection logic
-            if color_option == "Jet (Blue-Red)":
-                color_scale = "Jet"
-            elif color_option == "White-Red":
-                color_scale = "Reds"
-            else:
-                color_scale = color_option
-            
-            st.markdown("#### Real-time Filters")
+            # Map Logic
+            if color_option == "Jet (Blue-Red)": c_seq = px.colors.sequential.Jet
+            elif color_option == "White-Red": c_seq = px.colors.sequential.Reds
+            elif color_option == "Viridis": c_seq = px.colors.sequential.Viridis
+            else: c_seq = px.colors.sequential.Inferno
+
+            st.markdown("#### Filters")
             df = st.session_state.analysis_df
-            f_speed = st.slider("Speed (km/h)", int(df['Speed'].min()), int(df['Speed'].max()), (0, 130))
-            f_flow = st.slider("Flow (veh/h)", int(df['Flow'].min()), int(df['Flow'].max()), (0, int(df['Flow'].max())))
+            f_speed = st.slider("Speed", int(df['Speed'].min()), int(df['Speed'].max()), (0, 130))
+            f_flow = st.slider("Flow", int(df['Flow'].min()), int(df['Flow'].max()), (0, int(df['Flow'].max())))
             
             mask = (df['Speed'].between(f_speed[0], f_speed[1])) & (df['Flow'].between(f_flow[0], f_flow[1]))
             filtered_df = df[mask].copy()
             
             tot = filtered_df[f"{map_pollutant}_Total"].sum()
             u_fac = convert_value(1, map_pollutant, units[map_pollutant])
-            st.metric(f"Total {map_pollutant} (Visible)", f"{tot * u_fac:,.2f}", units[map_pollutant])
+            st.metric(f"Total {map_pollutant}", f"{tot * u_fac:,.2f}", units[map_pollutant])
 
         with c_viz:
             geom_map = st.session_state.geom_map
             name_map = st.session_state.name_map
             
-            # Binning for Performance
-            filtered_df['color_bin'] = pd.qcut(filtered_df[f"{map_pollutant}_Total"], 5, labels=False, duplicates='drop')
+            # 4 Groups (Quartiles)
+            filtered_df['color_bin'] = pd.qcut(filtered_df[f"{map_pollutant}_Total"], 4, labels=False, duplicates='drop')
             
             fig = go.Figure()
-            
-            # Use Plotly's built-in colorscales based on selection
-            if color_scale == "Jet":
-                c_seq = px.colors.sequential.Jet
-            elif color_scale == "Reds":
-                c_seq = px.colors.sequential.Reds
-            elif color_scale == "Viridis":
-                c_seq = px.colors.sequential.Viridis
-            elif color_scale == "Plasma":
-                c_seq = px.colors.sequential.Plasma
-            elif color_scale == "Inferno":
-                c_seq = px.colors.sequential.Inferno
-            else:
-                c_seq = px.colors.sequential.Jet
-
             bins = sorted(filtered_df['color_bin'].unique())
+            
+            bin_labels = ["Low", "Medium", "High", "Critical"]
+            
             for b in bins:
                 subset = filtered_df[filtered_df['color_bin'] == b]
-                b_lats = []
-                b_lons = []
-                
+                b_lats, b_lons = [], []
                 val_mean = subset[f"{map_pollutant}_Total"].mean() * u_fac
-                # Safely map bin to color index
+                
+                # Color mapping
                 c_idx = int(b * (len(c_seq)-1) / (max(bins) if max(bins)>0 else 1))
                 c_code = c_seq[c_idx]
                 
@@ -431,11 +387,11 @@ if st.session_state.get('calc_done', False):
                     lat=b_lats, lon=b_lons,
                     mode='lines',
                     line=dict(width=3, color=c_code),
-                    name=f"Level {int(b)+1} (~{val_mean:.2f})",
-                    hoverinfo='name' 
+                    name=f"{bin_labels[int(b)]} (Avg {val_mean:.2f})",
+                    hoverinfo='name'
                 ))
             
-            # Centroid scatter for tooltip
+            # Tooltip layer
             center_lats, center_lons, center_text = [], [], []
             for _, row in filtered_df.iterrows():
                 oid = int(row['OSM_ID'])
@@ -450,116 +406,72 @@ if st.session_state.get('calc_done', False):
                     center_text.append(txt)
             
             fig.add_trace(go.Scattermapbox(
-                lat=center_lats, lon=center_lons,
-                mode='markers',
-                marker=dict(size=10, opacity=0),
-                text=center_text,
-                hoverinfo='text',
-                name='Info'
+                lat=center_lats, lon=center_lons, mode='markers', marker=dict(size=10, opacity=0),
+                text=center_text, hoverinfo='text', name='Info'
             ))
 
             fig.update_layout(
-                mapbox_style=map_style,
-                mapbox_zoom=10,
+                mapbox_style=map_style, mapbox_zoom=10,
                 mapbox_center={"lat": (ymin+ymax)/2, "lon": (xmin+xmax)/2},
-                margin={"r":0,"t":0,"l":0,"b":0},
-                height=600,
+                margin={"r":0,"t":0,"l":0,"b":0}, height=600,
                 legend=dict(orientation="h", y=1, x=0, bgcolor="rgba(255,255,255,0.8)")
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    # 2. ANALYSIS CHARTS
+    # 2. ANALYSIS
     with tab_charts:
-        df = st.session_state.analysis_df
+        res = st.session_state.calc_results
+        f_res = st.session_state.fuel_results
         
-        # -- Row 1: Key Drivers (Speed & Inequality) --
+        # Row 1: Vehicle Composition
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown("### 📉 Speed Efficiency Curve")
-            st.caption("Do higher speeds reduce or increase emissions? (Look for the 'U-shape')")
-            # Scatter of Speed vs Total Emission
-            chart_poll = st.selectbox("Analyze Pollutant", sel_pollutants, key="scatter_p")
-            u = units[chart_poll]
-            fac = convert_value(1, chart_poll, u)
+            st.markdown("### 🚗 Vehicle Composition")
+            chart_type_v = st.selectbox("Chart Type", ["Bar Chart", "Donut Chart", "Pie Chart"], key="v_chart")
+            p_v = st.selectbox("Pollutant", sel_pollutants, key="v_poll")
+            u = units[p_v]
+            fac = convert_value(1, p_v, u)
             
-            # Add converted column for plotting
-            plot_df = df.copy()
-            plot_df['Emission_Val'] = plot_df[f"{chart_poll}_Total"] * fac
+            v_data = [
+                {'Type': 'PC', 'Value': res[p_v]['pc'].sum() * fac},
+                {'Type': 'Moto', 'Value': res[p_v]['moto'].sum() * fac},
+                {'Type': 'LDV', 'Value': res[p_v]['ldv'].sum() * fac},
+                {'Type': 'HDV', 'Value': res[p_v]['hdv'].sum() * fac}
+            ]
+            v_df = pd.DataFrame(v_data)
             
-            fig_scat = px.scatter(
-                plot_df, x="Speed", y="Emission_Val", 
-                color="Flow", size="Flow",
-                hover_data=["OSM_ID"],
-                color_continuous_scale="Viridis",
-                labels={"Emission_Val": f"{chart_poll} ({u})", "Speed": "Speed (km/h)"},
-                title=f"{chart_poll} vs Speed Analysis"
-            )
-            st.plotly_chart(fig_scat, use_container_width=True)
-            
+            if chart_type_v == "Bar Chart":
+                fig_v = px.bar(v_df, x="Type", y="Value", color="Type", title=f"{p_v} by Vehicle Type")
+            elif chart_type_v == "Donut Chart":
+                fig_v = px.pie(v_df, values="Value", names="Type", hole=0.4, title=f"{p_v} Share")
+            else:
+                fig_v = px.pie(v_df, values="Value", names="Type", title=f"{p_v} Share")
+            st.plotly_chart(fig_v, use_container_width=True)
+
+        # Row 2: Fuel Split
         with c2:
-            st.markdown("### 📊 Pareto Analysis (Lorenz Curve)")
-            st.caption("Inequality Check: What % of roads cause the most emissions?")
-            # Sort by emission descending
-            sorted_df = plot_df.sort_values(by="Emission_Val", ascending=False)
-            sorted_df['Cum_Emission'] = sorted_df['Emission_Val'].cumsum()
-            sorted_df['Cum_Emission_Pct'] = sorted_df['Cum_Emission'] / sorted_df['Emission_Val'].sum()
-            sorted_df['Road_Pct'] = np.arange(1, len(sorted_df)+1) / len(sorted_df)
-            
-            fig_lorenz = px.line(
-                sorted_df, x="Road_Pct", y="Cum_Emission_Pct",
-                title="Emission Inequality (Lorenz Curve)",
-                labels={"Road_Pct": "Cumulative % of Roads", "Cum_Emission_Pct": "Cumulative % of Emissions"}
-            )
-            # Add diagonal perfect equality line
-            fig_lorenz.add_shape(type="line", x0=0, y0=0, x1=1, y1=1, line=dict(dash="dash", color="gray"))
-            st.plotly_chart(fig_lorenz, use_container_width=True)
-
-        # -- Row 2: Composition & Variance --
-        c3, c4 = st.columns(2)
-        
-        with c3:
-            st.markdown("### 📦 Emission Variance by Vehicle Type")
-            st.caption("Distribution of emissions per link for each vehicle class")
-            # Prepare long format for box plot
-            res = st.session_state.calc_results
-            box_data = []
-            p = chart_poll # Use same pollutant as above
-            for v_type in ['pc', 'ldv', 'hdv', 'moto']:
-                vals = res[p][v_type] * fac
-                # Sample if too large to prevent lag, or just plot all
-                # Let's filter out zero-emission links for log scale clarity if needed
-                active_vals = vals[vals > 0]
-                box_data.extend([{'Type': v_type.upper(), 'Emission': v} for v in active_vals])
-            
-            box_df = pd.DataFrame(box_data)
-            fig_box = px.box(
-                box_df, x="Type", y="Emission", color="Type",
-                title=f"{p} Emission Spread by Vehicle",
-                labels={"Emission": f"{p} ({u})"}
-            )
-            st.plotly_chart(fig_box, use_container_width=True)
-
-        with c4:
-            st.markdown("### ⛽ Fuel Contribution Breakdown")
-            f_res = st.session_state.fuel_results
+            st.markdown("### ⛽ Fuel Analysis")
+            chart_type_f = st.selectbox("Chart Type", ["Grouped Bar", "Stacked Bar"], key="f_chart")
             f_data = []
             for p in sel_pollutants:
                 u_p = units[p]
                 f = convert_value(1, p, u_p)
                 f_data.append({'Pollutant': p, 'Fuel': 'Gasoline', 'Value': f_res[p]['gas'].sum() * f})
                 f_data.append({'Pollutant': p, 'Fuel': 'Diesel', 'Value': f_res[p]['diesel'].sum() * f})
-            
             f_df = pd.DataFrame(f_data)
-            fig_f = px.bar(f_df, x="Pollutant", y="Value", color="Fuel", title="Gasoline vs Diesel Split", barmode='group')
+            
+            if chart_type_f == "Grouped Bar":
+                fig_f = px.bar(f_df, x="Pollutant", y="Value", color="Fuel", barmode='group', title="Fuel Contribution")
+            else:
+                fig_f = px.bar(f_df, x="Pollutant", y="Value", color="Fuel", barmode='stack', title="Fuel Contribution")
             st.plotly_chart(fig_f, use_container_width=True)
             
     # 3. EXPORT
     with tab_data:
-        st.markdown("### Download Full Results")
+        st.markdown("### Download Data")
         export_df = st.session_state.analysis_df.copy()
         csv = export_df.to_csv(index=False).encode('utf-8')
         st.download_button("⬇️ Download CSV", csv, "emissions_results.csv", "text/csv")
-        st.info("Full calculation data including inputs and results available.")
 
 else:
     st.markdown("""
