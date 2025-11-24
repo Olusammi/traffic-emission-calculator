@@ -25,7 +25,7 @@ REPO_USER = "Olusammi"
 REPO_NAME = "traffic-emission-calculator"
 REPO_BRANCH = "main"
 # Using "defualt" as specified. Ensure this folder exists in your repo!
-DEFAULT_FOLDER = "defualt" 
+DEFAULT_FOLDER = "default" 
 GITHUB_BASE_URL = f"https://raw.githubusercontent.com/{REPO_USER}/{REPO_NAME}/{REPO_BRANCH}/{DEFAULT_FOLDER}/"
 
 # Exact mapping of your file keys to the filenames in your 'defualt' folder
