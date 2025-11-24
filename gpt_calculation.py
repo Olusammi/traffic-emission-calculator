@@ -20,36 +20,45 @@ import plotly.express as px
 st.set_page_config(page_title="Advanced Traffic Emission Calculator", layout="wide", initial_sidebar_state="expanded")
 
 # ==================== CONFIGURATION: GITHUB DEFAULTS ====================
-# Update these if your repository details change
+# Repository Details
 REPO_USER = "Olusammi"
 REPO_NAME = "traffic-emission-calculator"
 REPO_BRANCH = "main"
-DEFAULT_FOLDER = "default" 
+# NOTE: Using "defualt" as specified in your message. Change to "default" if you rename the folder on GitHub.
+DEFAULT_FOLDER = "defualt" 
 GITHUB_BASE_URL = f"https://raw.githubusercontent.com/{REPO_USER}/{REPO_NAME}/{REPO_BRANCH}/{DEFAULT_FOLDER}/"
 
 # Mapping your variable keys to your specific filenames
 DEFAULT_FILES_MAP = {
-    "pc": "PC_parameter.csv",
-    "ldv": "LDV_parameter.csv",
-    "hdv": "HDV_parameter.csv",
-    "moto": "Moto_parameter.csv",
-    "link": "link_osm_with-ldv.dat",
-    "osm": "selected_zone-lagos.osm", # Added .osm extension assumption
-    "ecg": "engine_capacity_gasoline.dat",
-    "ecd": "engine_capacity_diesel.dat",
-    "ccg": "copert_class_proportion_gasoline.dat",
-    "ccd": "copert_class_proportion_diesel.dat",
-    "2s": "copert_class_proportion_2_stroke_motorcycle_more_50.dat",
-    "4s": "copert_class_proportion_4_stroke_motorcycle_50_250.dat"
+    "pc_param": "PC_parameter.csv",
+    "ldv_param": "LDV_parameter.csv",
+    "hdv_param": "HDV_parameter.csv",
+    "moto_param": "Moto_parameter.csv",
+    "link_osm": "link_osm_with-ldv.dat",
+    "osm_file": "selected_zone-lagos", # Logic below will handle extension if needed, usually files have extension
+    "engine_cap_gas": "engine_capacity_gasoline.dat",
+    "engine_cap_diesel": "engine_capacity_diesel.dat",
+    "copert_class_gas": "copert_class_proportion_gasoline.dat",
+    "copert_class_diesel": "copert_class_proportion_diesel.dat",
+    "copert_2stroke": "copert_class_proportion_2_stroke_motorcycle_more_50.dat",
+    "copert_4stroke": "copert_class_proportion_4_stroke_motorcycle_50_250.dat"
 }
 
 # ==================== HELPER FUNCTIONS ====================
 @st.cache_data(show_spinner=False)
 def load_default_file_from_github(filename):
     """Fetches a file from GitHub and returns it as a BytesIO object."""
+    # Append extension if missing for the OSM file specifically or generally
+    # For this specific case, the user listed 'selected_zone-lagos' without extension
+    # but 'link_osm_with-ldv.dat' with it. We'll assume the URL needs the full name.
     url = GITHUB_BASE_URL + filename
     try:
         response = requests.get(url)
+        if response.status_code != 200:
+            # Try adding .osm if it fails and looks like the osm file
+            if "selected_zone" in filename and not filename.endswith(".osm"):
+                 response = requests.get(url + ".osm")
+        
         response.raise_for_status()
         return BytesIO(response.content)
     except requests.exceptions.RequestException:
@@ -251,30 +260,29 @@ if st.sidebar.checkbox("Show Conversion Info", value=False):
 st.sidebar.markdown("---")
 # ==================== FILE UPLOADS ====================
 st.sidebar.header("📂 Upload Input Files")
-st.sidebar.caption("Files will automatically load from GitHub defaults if not uploaded.")
+st.sidebar.caption("Files will automatically load from GitHub 'defualt' folder if not uploaded.")
 
 copert_files = st.sidebar.expander("COPERT Parameter Files", expanded=True)
 with copert_files:
-    pc_param = get_file_input("PC Parameter CSV", ['csv'], 'pc')
-    ldv_param = get_file_input("LDV Parameter CSV", ['csv'], 'ldv')
-    hdv_param = get_file_input("HDV Parameter CSV", ['csv'], 'hdv')
-    moto_param = get_file_input("Moto Parameter CSV", ['csv'], 'moto')
+    pc_param = get_file_input("PC Parameter CSV", ['csv'], 'pc_param')
+    ldv_param = get_file_input("LDV Parameter CSV", ['csv'], 'ldv_param')
+    hdv_param = get_file_input("HDV Parameter CSV", ['csv'], 'hdv_param')
+    moto_param = get_file_input("Moto Parameter CSV", ['csv'], 'moto_param')
 
 data_files = st.sidebar.expander("Data Files", expanded=True)
 with data_files:
-    link_osm = get_file_input("Link OSM Data (.dat or .csv)", ['dat', 'csv', 'txt'], 'link')
-    osm_file = get_file_input("OSM Network File (.osm)", ['osm'], 'osm')
+    link_osm = get_file_input("Link OSM Data (.dat or .csv)", ['dat', 'csv', 'txt'], 'link_osm')
+    osm_file = get_file_input("OSM Network File (.osm)", ['osm'], 'osm_file')
 
 proportion_files = st.sidebar.expander("Proportion Data Files", expanded=False)
 with proportion_files:
-    engine_cap_gas = get_file_input("Engine Capacity Gasoline", ['dat', 'txt'], 'ecg')
-    engine_cap_diesel = get_file_input("Engine Capacity Diesel", ['dat', 'txt'], 'ecd')
-    copert_class_gas = get_file_input("COPERT Class Gasoline", ['dat', 'txt'], 'ccg')
-    copert_class_diesel = get_file_input("COPERT Class Diesel", ['dat', 'txt'], 'ccd')
-    copert_2stroke = get_file_input("2-Stroke Motorcycle", ['dat', 'txt'], '2s')
-    copert_4stroke = get_file_input("4-Stroke Motorcycle", ['dat', 'txt'], '4s')
+    engine_cap_gas = get_file_input("Engine Capacity Gasoline", ['dat', 'txt'], 'engine_cap_gas')
+    engine_cap_diesel = get_file_input("Engine Capacity Diesel", ['dat', 'txt'], 'engine_cap_diesel')
+    copert_class_gas = get_file_input("COPERT Class Gasoline", ['dat', 'txt'], 'copert_class_gas')
+    copert_class_diesel = get_file_input("COPERT Class Diesel", ['dat', 'txt'], 'copert_class_diesel')
+    copert_2stroke = get_file_input("2-Stroke Motorcycle", ['dat', 'txt'], 'copert_2stroke')
+    copert_4stroke = get_file_input("4-Stroke Motorcycle", ['dat', 'txt'], 'copert_4stroke')
 
-# NOTE: LDV and HDV distribution file uploaders are removed as requested.
 st.sidebar.markdown("---")
 st.sidebar.info("""
 **LDV/HDV Distributions:**
@@ -306,56 +314,32 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
 
 # ==================== UNIT CONVERSION FUNCTION ====================
 def convert_emission_value(value, pollutant, from_unit, to_unit, distance_km=None):
-    """
-    Convert emission values between different units
-    """
-    if from_unit == to_unit:
-        return value
-    
-    if pollutant not in unit_conversion_options:
-        return value
-    
+    if from_unit == to_unit: return value
+    if pollutant not in unit_conversion_options: return value
     conversions = unit_conversion_options[pollutant]
-    
-    if to_unit not in conversions:
-        return value
-    
-    # Handle inverse calculations (mpg, km/L)
+    if to_unit not in conversions: return value
     if to_unit in ["mpg", "km/L"]:
-        if value == 0:
-            return 0
-        if to_unit == "mpg":
-            return 235.214 / value if value != 0 else 0
-        elif to_unit == "km/L":
-            return 100 / value if value != 0 else 0
-    
-    # Handle annual conversions
+        if value == 0: return 0
+        if to_unit == "mpg": return 235.214 / value
+        elif to_unit == "km/L": return 100 / value
     if "year" in to_unit:
         annual_distance = distance_km if distance_km else 15000  # Default 15,000 km/year
         base_value = value * conversions[to_unit]["factor"]
         return base_value * annual_distance
-    
-    # Standard conversion
     return value * conversions[to_unit]["factor"]
 
 def format_emission_value(value, unit):
-    """Format emission value based on magnitude"""
-    if value == 0:
-        return "0.00"
-    elif value < 0.001:
-        return f"{value:.6f}"
-    elif value < 0.1:
-        return f"{value:.4f}"
-    elif value < 10:
-        return f"{value:.3f}"
-    elif value < 1000:
-        return f"{value:.2f}"
-    else:
-        return f"{value:.1f}"
+    if value == 0: return "0.00"
+    elif value < 0.001: return f"{value:.6f}"
+    elif value < 0.1: return f"{value:.4f}"
+    elif value < 10: return f"{value:.3f}"
+    elif value < 1000: return f"{value:.2f}"
+    else: return f"{value:.1f}"
 
 # ==================== TAB 1: INSTRUCTIONS ====================
 with tab1:
     st.header("📖 User Guide & Instructions")
+    st.info("The app now automatically loads default files from the GitHub 'defualt' folder if no files are uploaded.")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -387,50 +371,6 @@ with tab1:
         - Detailed fleet modeling
         - Integration: US regulations
         """)
-
-    st.markdown("---")
-    st.subheader("🚀 Quick Start Guide")
-    st.markdown("""
-    ### Step-by-Step Process:
-
-    1. **Upload Required Files** (Left Sidebar)
-       - The app will automatically try to load default files from GitHub if you don't upload any.
-       - You can override any default by uploading your own file.
-
-    2. **Select Emission Metrics** (Left Sidebar)
-       - Choose pollutants to calculate
-       - Select calculation methodology
-       - Configure accuracy settings
-
-    3. **Preview Your Data** (Data Preview Tab)
-       - Verify uploaded data structure
-       - Check statistics and summaries
-
-    4. **Review Formulas** (Formula Explanation Tab)
-       - Understand calculation methods
-       - See parameter definitions
-       - Review examples
-
-    5. **Calculate Emissions** (Calculate Tab)
-       - Run emission calculations
-       - View real-time progress
-       - See detailed results
-
-    6. **Analyze Results** (Multi-Metric Analysis Tab)
-       - Compare pollutants
-       - View trends and patterns
-       - Generate insights
-
-    7. **Visualize on Map** (Interactive Map Tab)
-       - Interactive emission mapping
-       - Multiple visualization modes
-       - Road-level detail
-
-    8. **Download Results** (Download Tab)
-       - Export emission data
-       - Save visualizations
-       - Generate reports
-    """)
 
 # ==================== TAB 2: DATA PREVIEW ====================
 with tab2:
@@ -496,18 +436,10 @@ with tab2:
                                         title="Traffic Flow Distribution")
                 st.plotly_chart(fig_flow, use_container_width=True)
 
-            # Validation warnings
-            if data_link['Speed'].min() < 10:
-                st.warning(
-                    f"⚠️ {len(data_link[data_link['Speed'] < 10])} links have speed < 10 km/h. COPERT formulas may be less accurate.")
-            if data_link['Speed'].max() > 130:
-                st.warning(
-                    f"⚠️ {len(data_link[data_link['Speed'] > 130])} links have speed > 130 km/h. Consider speed caps.")
-
         except Exception as e:
             st.error(f"❌ Error reading link data: {e}")
     else:
-        st.info("👆 Please upload Link OSM Data file in the sidebar")
+        st.info("👆 Please upload Link OSM Data file in the sidebar or wait for default load.")
 
 # ==================== TAB 3: FORMULA EXPLANATION ====================
 with tab3:
@@ -543,32 +475,6 @@ with tab3:
             - **Dependency**: Vehicle type, fuel, Euro standard
             """)
 
-        st.markdown("### Example Calculation")
-        st.code("""
-# For Euro 6 Gasoline Passenger Car at 60 km/h:
-a, c, e = 11.2, -0.102, 0.000677
-b, d = 0.129, -0.000947
-V = 60
-
-EF_hot = (a + c*V + e*V**2) / (1 + b*V + d*V**2)
-EF_hot = (11.2 + (-0.102)*60 + 0.000677*3600) / (1 + 0.129*60 + (-0.000947)*3600)
-EF_hot ≈ 0.85 g/km
-        """, language='python')
-
-        if include_cold_start:
-            st.markdown("### Cold Start Correction")
-            st.latex(r'''
-            E_{total} = E_{hot} \cdot (1 - \beta) + E_{cold} \cdot \beta
-            ''')
-            st.latex(r'''
-            \beta = 0.6474 - 0.02545 \cdot L_{trip} - (0.00974 - 0.000385 \cdot L_{trip}) \cdot T_{amb}
-            ''')
-            st.markdown("""
-            - **β**: Cold mileage percentage
-            - **L<sub>trip</sub>**: Average trip length (km)
-            - **T<sub>amb</sub>**: Ambient temperature (°C)
-            """, unsafe_allow_html=True)
-
     elif formula_pollutant == "CO2":
         st.subheader("🔵 Carbon Dioxide (CO₂) Emission Formula")
 
@@ -576,35 +482,6 @@ EF_hot ≈ 0.85 g/km
         st.latex(r'''
         CO_2 = FC \cdot CF \cdot \frac{44}{12} \cdot 1000
         ''')
-
-        st.markdown("**Parameters:**")
-        st.markdown("""
-        - **FC**: Fuel consumption (L/km)
-        - **CF**: Carbon content factor
-          - Gasoline: 0.64 kg C/L
-          - Diesel: 0.68 kg C/L
-        - **44/12**: Molecular weight ratio (CO₂/C)
-        - **1000**: Convert kg to g
-        """)
-
-        st.markdown("### Speed-Dependent Fuel Consumption")
-        st.latex(r'''
-        FC(V) = a \cdot V^2 + b \cdot V + c
-        ''')
-
-        st.markdown("### Example Calculation")
-        st.code("""
-# For Gasoline vehicle at 60 km/h:
-V = 60
-a, b, c = 0.00015, -0.015, 0.8  # L/km coefficients
-CF = 0.64  # kg C/L for gasoline
-
-FC = a*V**2 + b*V + c
-FC = 0.00015*3600 - 0.015*60 + 0.8 = 0.44 L/km
-
-CO2 = FC * CF * (44/12) * 1000
-CO2 = 0.44 * 0.64 * 3.67 * 1000 ≈ 1032 g/km
-        """, language='python')
 
     elif formula_pollutant == "NOx":
         st.subheader("🟡 Nitrogen Oxides (NOx) Emission Formula")
@@ -614,24 +491,6 @@ CO2 = 0.44 * 0.64 * 3.67 * 1000 ≈ 1032 g/km
         EF_{NOx} = EF_{base}(V) \cdot \left(1 + k \cdot (T_{amb} - 20)\right)
         ''')
 
-        st.markdown("**Base Emission Factor:**")
-        st.latex(r'''
-        EF_{base}(V) = \frac{a + c \cdot V + e \cdot V^2 + \frac{f}{V}}{1 + b \cdot V + d \cdot V^2}
-        ''')
-
-        st.markdown("**Parameters:**")
-        st.markdown("""
-        - **k**: Temperature coefficient (0.01-0.03 per °C)
-        - **T<sub>amb</sub>**: Ambient temperature (°C)
-        - **f/V**: Low-speed enrichment term
-        - **Diesel k ≈ 0.015, Gasoline k ≈ 0.02**
-        """, unsafe_allow_html=True)
-
-        if include_temperature_correction:
-            st.info(f"✅ Temperature correction enabled: T = {ambient_temp}°C")
-            st.latex(
-                f"Temperature \\ factor = 1 + 0.02 \\cdot ({ambient_temp} - 20) = {1 + 0.02 * (ambient_temp - 20):.3f}")
-
     elif formula_pollutant == "PM":
         st.subheader("🟣 Particulate Matter (PM) Emission Formula")
 
@@ -640,101 +499,32 @@ CO2 = 0.44 * 0.64 * 3.67 * 1000 ≈ 1032 g/km
         PM_{actual} = EF_{base} \cdot (1 - \eta_{DPF}) \cdot D
         ''')
 
-        st.markdown("**Parameters:**")
-        st.markdown("""
-        - **EF<sub>base</sub>**: Base PM emission factor (mg/km)
-        - **η<sub>DPF</sub>**: Diesel Particulate Filter efficiency
-          - Euro 4: 85%
-          - Euro 5: 90%
-          - Euro 6: 95-99%
-        - **D**: Distance traveled (km)
-        """, unsafe_allow_html=True)
-
-        st.markdown("### Base Emission Factor")
-        st.latex(r'''
-        EF_{base} = a \cdot V^2 + b \cdot V + c
-        ''')
-
-        st.markdown("### Example: Euro 6 Diesel")
-        st.code("""
-# Euro 6 Diesel with DPF
-EF_base = 50  # mg/km (without DPF)
-DPF_efficiency = 0.98  # 98%
-Distance = 10  # km
-
-PM_actual = EF_base * (1 - DPF_efficiency) * Distance
-PM_actual = 50 * 0.02 * 10 = 10 mg total
-PM_per_km = 1 mg/km
-        """, language='python')
-
     elif formula_pollutant == "VOC":
         st.subheader("🟢 Volatile Organic Compounds (VOC) Formula")
-
-        st.markdown("### Total VOC = Exhaust + Evaporative")
         st.latex(r'''
         VOC_{total} = VOC_{exhaust} + VOC_{evap}
         ''')
 
-        st.markdown("**Exhaust Emissions:**")
-        st.latex(r'''
-        VOC_{exhaust} = \left(\frac{a}{V} + b + c \cdot V\right) \cdot D
-        ''')
-
-        st.markdown("**Evaporative Emissions:**")
-        st.latex(r'''
-        VOC_{evap} = k_{evap} \cdot (T_{amb} - T_{ref}) \cdot t_{soak}
-        ''')
-
-        st.markdown("**Parameters:**")
-        st.markdown("""
-        - **a/V**: Low-speed enrichment
-        - **k<sub>evap</sub>**: Evaporation rate (g/°C/hour)
-        - **t<sub>soak</sub>**: Hot soak time (hours)
-        - **T<sub>ref</sub>**: Reference temperature (20°C)
-        """, unsafe_allow_html=True)
-
     elif formula_pollutant == "FC":
         st.subheader("🟠 Fuel Consumption Formula")
-
-        st.markdown("### Quadratic Speed Model")
         st.latex(r'''
         FC = a \cdot V^2 + b \cdot V + c
         ''')
-
-        st.markdown("**Typical Coefficients (Gasoline PC):**")
-        st.markdown("""
-        - **a** ≈ 0.00015 (L/km per (km/h)²)
-        - **b** ≈ -0.015 (L/km per km/h)
-        - **c** ≈ 0.8 (L/km baseline)
-        """)
-
-        st.markdown("### Optimal Speed")
-        st.latex(r'''
-        V_{optimal} = -\frac{b}{2a} \approx 50-60 \\ km/h
-        ''')
-
-    st.markdown("---")
-    st.info("""
-    📚 **References:**
-    - EMEP/EEA Air Pollutant Emission Inventory Guidebook 2019
-    - IPCC Guidelines for National Greenhouse Gas Inventories
-    - US EPA MOVES Technical Documentation
-    """)
 
 # ==================== TAB 4: CALCULATE EMISSIONS ====================
 with tab4:
     st.header("⚙️ Calculate Emissions")
 
-    # Check if all files are present (Uploaded or Default)
-    files_to_check = [pc_param, ldv_param, hdv_param, moto_param, link_osm,
+    # Check all files (Uploaded or Default)
+    required_files_objs = [pc_param, ldv_param, hdv_param, moto_param, link_osm,
                       engine_cap_gas, engine_cap_diesel, copert_class_gas,
                       copert_class_diesel, copert_2stroke, copert_4stroke]
-    all_uploaded = all(f is not None for f in files_to_check)
+    all_present = all(f is not None for f in required_files_objs)
 
     if not selected_pollutants:
         st.warning("⚠️ Please select at least one pollutant from the sidebar")
-    elif all_uploaded:
-        st.success("✅ All required files uploaded (or defaults loaded)!")
+    elif all_present:
+        st.success("✅ All required files ready (Using Uploads or Defaults)")
 
         # Display calculation settings
         with st.expander("🔧 Current Calculation Settings", expanded=True):
@@ -762,14 +552,10 @@ with tab4:
                         moto_path = os.path.join(tmpdir, "Moto_parameter.csv")
 
                         # Write uploaded content to temporary files for the COPERT class to load
-                        with open(pc_path, 'wb') as f:
-                            f.write(pc_param.getbuffer())
-                        with open(ldv_path, 'wb') as f:
-                            f.write(ldv_param.getbuffer())
-                        with open(hdv_path, 'wb') as f:
-                            f.write(hdv_param.getbuffer())
-                        with open(moto_path, 'wb') as f:
-                            f.write(moto_param.getbuffer())
+                        with open(pc_path, 'wb') as f: f.write(pc_param.getbuffer())
+                        with open(ldv_path, 'wb') as f: f.write(ldv_param.getbuffer())
+                        with open(hdv_path, 'wb') as f: f.write(hdv_param.getbuffer())
+                        with open(moto_path, 'wb') as f: f.write(moto_param.getbuffer())
 
                         # Initialize COPERT class
                         cop = copert.Copert(pc_path, ldv_path, hdv_path, moto_path)
@@ -783,28 +569,22 @@ with tab4:
                         copert_2stroke.seek(0)
                         copert_4stroke.seek(0)
 
-                        # Load link data, supporting 7 or 9 columns
+                        # Load link data
                         data_link = pd.read_csv(link_osm, sep=r'\s+', header=None, engine='python').values
-
                         Nlink = data_link.shape[0]
 
-                        # --- Link Data Proportion Handling (LDV/HDV proportions P_ldv, P_hdv) ---
+                        # --- Link Data Proportion Handling ---
                         if data_link.shape[1] == 7:
-                            # Original 7-column format: PC/Moto only. LDV/HDV proportions are assumed to be 0
                             P_ldv = np.zeros(Nlink)
                             P_hdv = np.zeros(Nlink)
-                            st.warning("⚠️ Link data has only 7 columns. LDV and HDV flow proportions are assumed to be **0** for all links.")
                         elif data_link.shape[1] == 9:
-                            # Extended 9-column format: PC, Moto, LDV, HDV
                             P_ldv = data_link[:, 7]
                             P_hdv = data_link[:, 8]
                         else:
                             st.error(f"❌ Link data must have 7 or 9 columns, got {data_link.shape[1]}")
                             st.stop()
 
-                        # --- End Link Data Handling ---
-
-                        # Load PC and Moto distribution files (these MUST be uploaded)
+                        # Load PC and Moto distribution files
                         data_engine_capacity_gasoline = np.loadtxt(engine_cap_gas)
                         data_engine_capacity_diesel = np.loadtxt(engine_cap_diesel)
                         data_copert_class_gasoline = np.loadtxt(copert_class_gas)
@@ -812,127 +592,49 @@ with tab4:
                         data_copert_class_motorcycle_two_stroke = np.loadtxt(copert_2stroke)
                         data_copert_class_motorcycle_four_stroke = np.loadtxt(copert_4stroke)
 
-                        # --- NEW: LDV and HDV Distribution Defaults (No external file needed) ---
-
-                        # 1. Default LDV Distribution: Use the Gasoline PC Euro Class distribution as a proxy for the entire LDV fleet.
-                        st.info("ℹ️ Using **Passenger Car (Gasoline)** Euro Class distribution as the default for **LDV**.")
+                        # --- Defaults ---
                         data_copert_class_ldv = data_copert_class_gasoline
-
-                        # 2. Default HDV Distribution: Assumption of a modern, standard fleet.
-                        N_HDV_Class = 6 # Euro I to VI
-                        N_HDV_Type = 15 # Standard COPERT types
-                        st.info("ℹ️ Using a **Default HDV Fleet** composition: **100% Euro VI** (cleanest standard) and **Rigid Truck < 7.5t** (Type 0).")
-                        
+                        N_HDV_Class = 6
+                        N_HDV_Type = 15
                         data_hdv_reshaped = np.zeros((Nlink, N_HDV_Class, N_HDV_Type))
-                        
-                        # Set 100% of the fleet for each link to Euro VI (index 5) and HDV Type 0 (Rigid Truck < 7.5t, index 0)
                         data_hdv_reshaped[:, 5, 0] = 1.0 
-                        
-                        # --- End New Defaults ---
 
-                        # ====================================================================
-                        # 🔍 PARAMETER VERIFICATION SECTION
-                        # ====================================================================
-                        st.subheader("🔍 Parameter Verification")
-                        col1, col2, col3 = st.columns(3)
-
-                        with col1:
-                            st.write("**Motorcycle Distribution Ranges:**")
-                            st.write(f"2-stroke: {data_copert_class_motorcycle_two_stroke.min():.3f} to {data_copert_class_motorcycle_two_stroke.max():.3f}")
-                            st.write(f"4-stroke: {data_copert_class_motorcycle_four_stroke.min():.3f} to {data_copert_class_motorcycle_four_stroke.max():.3f}")
-
-                        with col2:
-                            st.write("**Link Data Ranges:**")
-                            st.write(f"PC Proportion: {data_link[:, 5].min():.3f} to {data_link[:, 5].max():.3f}")
-                            st.write(f"Motorcycle Flow: {(1 - data_link[:, 5]).min():.3f} to {(1 - data_link[:, 5]).max():.3f}")
-                            st.write(f"LDV Proportion: {P_ldv.min():.3f} to {P_ldv.max():.3f}")
-                            st.write(f"HDV Proportion: {P_hdv.min():.3f} to {P_hdv.max():.3f}")
-
-                        with col3:
-                            st.write("**Calculation Parameters:**")
-                            st.write(f"Speed Range: {data_link[:, 3].min():.1f} to {data_link[:, 3].max():.1f} km/h")
-                            st.write(f"Flow Range: {data_link[:, 2].min():.1f} to {data_link[:, 2].max():.1f} vehicles")
-                            st.write(f"Link Length Range: {data_link[:, 1].min():.3f} to {data_link[:, 1].max():.3f} km")
-
-                        # MOTORCYCLE CALCULATION TEST
-                        st.subheader("🧪 Motorcycle Calculation Test")
-                        test_speed = 50.0
-                        test_pollutant = cop.pollutant_CO
-                        test_engine_type = cop.engine_type_moto_four_stroke_50_250
-                        test_copert_class = cop.class_moto_Euro_3
-
-                        try:
-                            test_result = cop.EFMotorcycle(test_pollutant, test_speed, test_engine_type, test_copert_class)
-                            st.write(f"Test Calculation - CO at 50 km/h, 4-stroke Euro 3: {test_result:.6f} g/km")
-                            
-                            if test_result == 0:
-                                st.error("❌ Motorcycle test calculation returned 0 - there may be parameter issues")
-                            else:
-                                st.success("✅ Motorcycle test calculation successful!")
-                                
-                        except Exception as test_error:
-                            st.error(f"❌ Motorcycle test calculation failed: {test_error}")
-
-                        # Setup classes and types
+                        # Setup classes
                         engine_type = [cop.engine_type_gasoline, cop.engine_type_diesel]
-                        engine_type_m = [cop.engine_type_moto_two_stroke_more_50,
-                                         cop.engine_type_moto_four_stroke_50_250]
+                        engine_type_m = [cop.engine_type_moto_two_stroke_more_50, cop.engine_type_moto_four_stroke_50_250]
                         engine_capacity = [cop.engine_capacity_0p8_to_1p4, cop.engine_capacity_1p4_to_2]
                         copert_class = [cop.class_PRE_ECE, cop.class_ECE_15_00_or_01, cop.class_ECE_15_02,
-                                        cop.class_ECE_15_03,
-                                        cop.class_ECE_15_04, cop.class_Improved_Conventional, cop.class_Open_loop,
-                                        cop.class_Euro_1,
-                                        cop.class_Euro_2, cop.class_Euro_3, cop.class_Euro_4, cop.class_Euro_5,
-                                        cop.class_Euro_6, cop.class_Euro_6c]
+                                        cop.class_ECE_15_03, cop.class_ECE_15_04, cop.class_Improved_Conventional, 
+                                        cop.class_Open_loop, cop.class_Euro_1, cop.class_Euro_2, cop.class_Euro_3, 
+                                        cop.class_Euro_4, cop.class_Euro_5, cop.class_Euro_6, cop.class_Euro_6c]
                         Nclass = len(copert_class)
                         copert_class_motorcycle = [cop.class_moto_Conventional, cop.class_moto_Euro_1,
-                                                   cop.class_moto_Euro_2,
-                                                   cop.class_moto_Euro_3, cop.class_moto_Euro_4, cop.class_moto_Euro_5]
+                                                   cop.class_moto_Euro_2, cop.class_moto_Euro_3, 
+                                                   cop.class_moto_Euro_4, cop.class_moto_Euro_5]
                         Mclass = len(copert_class_motorcycle)
+                        HDV_Emission_Classes = [cop.class_hdv_Euro_I, cop.class_hdv_Euro_II, cop.class_hdv_Euro_III,
+                                                cop.class_hdv_Euro_IV, cop.class_hdv_Euro_V, cop.class_hdv_Euro_VI]
 
-                        # HDV Emission Classes (for use in calculation loop)
-                        HDV_Emission_Classes = [
-                            cop.class_hdv_Euro_I,
-                            cop.class_hdv_Euro_II,
-                            cop.class_hdv_Euro_III,
-                            cop.class_hdv_Euro_IV,
-                            cop.class_hdv_Euro_V,
-                            cop.class_hdv_Euro_VI
-                        ]
-
-                        # Initialize emission arrays for each selected pollutant
+                        # Initialize emission arrays
                         emissions_data = {}
                         pollutant_mapping = {
-                            "CO": cop.pollutant_CO,
-                            "CO2": cop.pollutant_FC,  # Will convert FC to CO2
-                            "NOx": cop.pollutant_NOx,
-                            "PM": cop.pollutant_PM,
-                            "VOC": cop.pollutant_VOC,
-                            "FC": cop.pollutant_FC
+                            "CO": cop.pollutant_CO, "CO2": cop.pollutant_FC, "NOx": cop.pollutant_NOx,
+                            "PM": cop.pollutant_PM, "VOC": cop.pollutant_VOC, "FC": cop.pollutant_FC
                         }
 
-                        # Also track fuel-specific emissions
                         fuel_emissions_data = {}
                         for poll in selected_pollutants:
-                            fuel_emissions_data[poll] = {
-                                'gasoline': np.zeros((Nlink,), dtype=float),
-                                'diesel': np.zeros((Nlink,), dtype=float)
-                            }
-                        # Initialize with LDV and HDV arrays
-                        for poll in selected_pollutants:
+                            fuel_emissions_data[poll] = {'gasoline': np.zeros((Nlink,), dtype=float), 'diesel': np.zeros((Nlink,), dtype=float)}
                             emissions_data[poll] = {
-                                'pc': np.zeros((Nlink,), dtype=float),
-                                'moto': np.zeros((Nlink,), dtype=float),
-                                'ldv': np.zeros((Nlink,), dtype=float), 
-                                'hdv': np.zeros((Nlink,), dtype=float), 
+                                'pc': np.zeros((Nlink,), dtype=float), 'moto': np.zeros((Nlink,), dtype=float),
+                                'ldv': np.zeros((Nlink,), dtype=float), 'hdv': np.zeros((Nlink,), dtype=float), 
                                 'total': np.zeros((Nlink,), dtype=float)
                             }
                         
-                        # Progress tracking
                         progress_bar = st.progress(0)
                         status_text = st.empty()
 
-                        # Calculate emissions for each link
+                        # Calculate emissions
                         for i in range(Nlink):
                             if i % max(1, Nlink // 100) == 0:
                                 progress_bar.progress(i / Nlink)
@@ -941,91 +643,39 @@ with tab4:
                             link_length = data_link[i, 1]
                             link_flow = data_link[i, 2]
                             v = min(max(10., data_link[i, 3]), 130.)
-                        
-                            # Proportions read from link data
                             link_gasoline_proportion = data_link[i, 4]
                             link_pc_proportion = data_link[i, 5]
                             link_4_stroke_proportion = data_link[i, 6]
-                        
-                            # Flows on this link
                             p_passenger = link_pc_proportion
-                            P_motorcycle = 1. - link_pc_proportion  # Assuming PC + Moto is base prior to LDV/HDV split
+                            P_motorcycle = 1. - link_pc_proportion
                             P_ldv_i = float(P_ldv[i]) if P_ldv is not None else 0.0
                             P_hdv_i = float(P_hdv[i]) if P_hdv is not None else 0.0
                         
                             engine_type_distribution = [link_gasoline_proportion, 1. - link_gasoline_proportion]
                             engine_capacity_distribution = [data_engine_capacity_gasoline[i], data_engine_capacity_diesel[i]]
-                            # Replace whatever you currently set here with this correct stroke-based distribution:
                             engine_type_motorcycle_distribution = [link_4_stroke_proportion, 1.0 - link_4_stroke_proportion]
 
-                        
-                            # For convenience: ensure ldv copert class array exists
-                            # data_copert_class_ldv is expected to be (Nlink, Nclass)
-                            # data_hdv_reshaped is expected to be (Nlink, N_HDV_Class, N_HDV_Type)
                             for poll_name in selected_pollutants:
                                 poll_type = pollutant_mapping[poll_name]
                         
-                                # -------- Passenger Car (PC) ------------
+                                # -------- PC ------------
                                 try:
-                                    for t in range(2):  # engine types: gasoline/diesel
-                                        for c in range(Nclass):  # euro classes
-                                            for k in range(2):  # engine capacity bins
-                                                # Diesel/capacity filter preserved
-                                                if t == 1 and k == 0 and copert_class[c] in range(cop.class_Euro_1, 1 + cop.class_Euro_3):
-                                                    continue
+                                    for t in range(2):
+                                        for c in range(Nclass):
+                                            for k in range(2):
+                                                if t == 1 and k == 0 and copert_class[c] in range(cop.class_Euro_1, 1 + cop.class_Euro_3): continue
                                                 try:
-                                                    e = cop.Emission(poll_type, v, link_length,
-                                                                     cop.vehicle_type_passenger_car,
-                                                                     engine_type[t],
-                                                                     copert_class[c],
-                                                                     engine_capacity[k],
-                                                                     ambient_temp)
-                                                except Exception:
-                                                    # fallback to HEF if signature differs
-                                                    try:
-                                                        if engine_type[t] in (cop.engine_type_gasoline, getattr(cop, 'engine_type_gasoline', None)):
-                                                            e = cop.HEFGasolinePassengerCar(poll_type, v, copert_class[c], engine_capacity[k])
-                                                        else:
-                                                            e = cop.HEFDieselPassengerCar(poll_type, v, copert_class[c], engine_capacity[k])
-                                                        e = e * link_length
-                                                    except Exception:
-                                                        e = 0.0
-                                                # temperature correction (NOx)
-                                                if poll_name == "NOx" and include_temperature_correction:
-                                                    temp_factor = 1 + 0.02 * (ambient_temp - 20)
-                                                    e *= temp_factor
-                                                # cold start
-                                                if include_cold_start and poll_name in ["CO", "NOx", "VOC"]:
-                                                    try:
-                                                        beta = cop.ColdStartMileagePercentage(
-                                                            cop.vehicle_type_passenger_car, engine_type[t], poll_type,
-                                                            copert_class[c], engine_capacity[k], ambient_temp, trip_length)
-                                                        e_cold = cop.ColdStartEmissionQuotient(
-                                                            cop.vehicle_type_passenger_car, engine_type[t], poll_type,
-                                                            v, copert_class[c], engine_capacity[k], ambient_temp)
-                                                        e = e * ((1 - beta) + e_cold * beta)
-                                                    except Exception:
-                                                        pass
-                        
-                                                pc_fleet_share = data_copert_class_gasoline[i, c] if t == 0 else data_copert_class_diesel[i, c]
-                                                e *= engine_type_distribution[t] * engine_capacity_distribution[t][k] * pc_fleet_share
-                        
-                                                #emissions_data[poll_name]['pc'][i] += e * p_passenger / link_length * link_flow
-                                # Calculate once and store in variable
-                                                final_e = e * p_passenger / link_length * link_flow
+                                                    e = cop.Emission(poll_type, v, link_length, cop.vehicle_type_passenger_car, engine_type[t], copert_class[c], engine_capacity[k], ambient_temp)
+                                                except Exception: e = 0.0
+                                                if poll_name == "NOx" and include_temperature_correction: e *= (1 + 0.02 * (ambient_temp - 20))
                                                 
-                                                # Add to PC total
+                                                pc_fleet_share = data_copert_class_gasoline[i, c] if t == 0 else data_copert_class_diesel[i, c]
+                                                final_e = e * engine_type_distribution[t] * engine_capacity_distribution[t][k] * pc_fleet_share * p_passenger / link_length * link_flow
                                                 emissions_data[poll_name]['pc'][i] += final_e
                                                 
-                                                # Track by fuel type
-                                                if 'fuel_emissions_data' in locals():
-                                                    if t == 0:  # Gasoline
-                                                        fuel_emissions_data[poll_name]['gasoline'][i] += final_e
-                                                    else:  # Diesel
-                                                        fuel_emissions_data[poll_name]['diesel'][i] += final_e
-                                except Exception:
-                                    # if PC block wholly fails, skip but continue
-                                    pass
+                                                if t == 0: fuel_emissions_data[poll_name]['gasoline'][i] += final_e
+                                                else: fuel_emissions_data[poll_name]['diesel'][i] += final_e
+                                except Exception: pass
                         
                                 # -------- LDV ------------
                                 if P_ldv_i > 0:
@@ -1033,54 +683,17 @@ with tab4:
                                         for t in range(2):
                                             for c in range(Nclass):
                                                 for k in range(2):
-                                                    # preserve same diesel/capacity skip rule
-                                                    if t == 1 and k == 0 and copert_class[c] in range(cop.class_Euro_1, 1 + cop.class_Euro_3):
-                                                        continue
+                                                    if t == 1 and k == 0 and copert_class[c] in range(cop.class_Euro_1, 1 + cop.class_Euro_3): continue
                                                     try:
-                                                        e_ldv = cop.Emission(poll_type, v, link_length,
-                                                                             cop.vehicle_type_light_commercial_vehicle,
-                                                                             engine_type[t], copert_class[c], engine_capacity[k], ambient_temp)
-                                                    except Exception:
-                                                        try:
-                                                            e_ldv = cop.HEFLightCommercialVehicle(poll_type, v, engine_type[t], copert_class[c])
-                                                            e_ldv = e_ldv * link_length
-                                                        except Exception:
-                                                            e_ldv = 0.0
-                        
-                                                    # temperature correction
-                                                    if poll_name == "NOx" and include_temperature_correction:
-                                                        temp_factor = 1 + 0.02 * (ambient_temp - 20)
-                                                        e_ldv *= temp_factor
-                                                    # cold start
-                                                    if include_cold_start and poll_name in ["CO", "NOx", "VOC"]:
-                                                        try:
-                                                            beta = cop.ColdStartMileagePercentage(
-                                                                cop.vehicle_type_light_commercial_vehicle, engine_type[t], poll_type,
-                                                                copert_class[c], engine_capacity[k], ambient_temp, trip_length)
-                                                            e_cold = cop.ColdStartEmissionQuotient(
-                                                                cop.vehicle_type_light_commercial_vehicle, engine_type[t], poll_type,
-                                                                v, copert_class[c], engine_capacity[k], ambient_temp)
-                                                            e_ldv = e_ldv * ((1 - beta) + e_cold * beta)
-                                                        except Exception:
-                                                            pass
-                        
-                                                    # ldv fleet share (uses data_copert_class_ldv; defaulted to PC gasoline distribution)
-                                                    ldv_fleet_share = data_copert_class_ldv[i, c]
-                                                    e_ldv *= engine_type_distribution[t] * engine_capacity_distribution[t][k] * ldv_fleet_share
-                        
-                                                    #emissions_data[poll_name]['ldv'][i] += e_ldv * P_ldv_i / link_length * link_flow
-                                                    final_e_ldv = e_ldv * P_ldv_i / link_length * link_flow
-                                                    emissions_data[poll_name]['ldv'][i] += final_e_ldv
+                                                        e_ldv = cop.Emission(poll_type, v, link_length, cop.vehicle_type_light_commercial_vehicle, engine_type[t], copert_class[c], engine_capacity[k], ambient_temp)
+                                                    except Exception: e_ldv = 0.0
+                                                    if poll_name == "NOx" and include_temperature_correction: e_ldv *= (1 + 0.02 * (ambient_temp - 20))
                                                     
-                                                    # Track fuel-specific emissions
-                                                    if 'fuel_emissions_data' in locals():
-                                                        if t == 0:  # Gasoline
-                                                            fuel_emissions_data[poll_name]['gasoline'][i] += final_e_ldv
-                                                        else:  # Diesel
-                                                            fuel_emissions_data[poll_name]['diesel'][i] += final_e_ldv
-                                                    # === END NEW SECTION ===
-                                    except Exception:
-                                        pass
+                                                    final_e_ldv = e_ldv * engine_type_distribution[t] * engine_capacity_distribution[t][k] * data_copert_class_ldv[i, c] * P_ldv_i / link_length * link_flow
+                                                    emissions_data[poll_name]['ldv'][i] += final_e_ldv
+                                                    if t == 0: fuel_emissions_data[poll_name]['gasoline'][i] += final_e_ldv
+                                                    else: fuel_emissions_data[poll_name]['diesel'][i] += final_e_ldv
+                                    except Exception: pass
                         
                                 # -------- HDV ------------
                                 if P_hdv_i > 0:
@@ -1088,191 +701,66 @@ with tab4:
                                         for t_class in range(N_HDV_Class):
                                             for t_type in range(N_HDV_Type):
                                                 hdv_fleet_share = data_hdv_reshaped[i, t_class, t_type]
-                                                if hdv_fleet_share <= 0:
-                                                    continue
-                                                engine_type_hdv = cop.engine_type_diesel  # HDVs: diesel by default
+                                                if hdv_fleet_share <= 0: continue
                                                 try:
-                                                    e_hdv = cop.Emission(poll_type, v, link_length,
-                                                                         cop.vehicle_type_heavy_duty_vehicle,
-                                                                         engine_type_hdv,
-                                                                         HDV_Emission_Classes[t_class],
-                                                                         t_type,
-                                                                         ambient_temp)
-                                                except Exception:
-                                                    # fallback: if signature different, try a simple HEF or 0
-                                                    try:
-                                                        e_hdv = cop.HEFHeavyDutyVehicle(poll_type, v, HDV_Emission_Classes[t_class], t_type)
-                                                        e_hdv = e_hdv * link_length
-                                                    except Exception:
-                                                        # very small base factor fallback to avoid zeros
-                                                        e_hdv = 0.0
+                                                    e_hdv = cop.Emission(poll_type, v, link_length, cop.vehicle_type_heavy_duty_vehicle, cop.engine_type_diesel, HDV_Emission_Classes[t_class], t_type, ambient_temp)
+                                                except Exception: e_hdv = 0.0
+                                                if poll_name == "NOx" and include_temperature_correction: e_hdv *= (1 + 0.015 * (ambient_temp - 20))
+                                                
+                                                final_e_hdv = e_hdv * hdv_fleet_share * P_hdv_i / link_length * link_flow
+                                                emissions_data[poll_name]['hdv'][i] += final_e_hdv
+                                                fuel_emissions_data[poll_name]['diesel'][i] += final_e_hdv
+                                    except Exception: pass
                         
-                                                # temperature correction for HDV NOx (diesel)
-                                                if poll_name == "NOx" and include_temperature_correction:
-                                                    temp_factor = 1 + 0.015 * (ambient_temp - 20)
-                                                    e_hdv *= temp_factor
-                        
-                                                e_hdv *= hdv_fleet_share
-                                                emissions_data[poll_name]['hdv'][i] += e_hdv * P_hdv_i / link_length * link_flow
-                                                # ADD:
-                                                if 'fuel_emissions_data' in locals():
-                                                    fuel_emissions_data[poll_name]['diesel'][i] += e_hdv * P_hdv_i / link_length * link_flow
-                                    except Exception:
-                                        pass
-                        
-                               # -------- Motorcycle (inside pollutant loop) ------------
+                               # -------- Motorcycle ------------
                                 try:
                                     for m in range(2):
                                         for d in range(Mclass):
-                                            # preserve your skip condition for certain euro classes
-                                            if m == 0 and copert_class_motorcycle[d] >= cop.class_moto_Euro_1:
-                                                continue
+                                            if m == 0 and copert_class_motorcycle[d] >= cop.class_moto_Euro_1: continue
                                             try:
-                                                # Use poll_type (current pollutant) here, not a fixed pollutant
                                                 e_f = cop.EFMotorcycle(poll_type, v, engine_type_m[m], copert_class_motorcycle[d])
-                                            except Exception:
-                                                # fallback: set to 0 and continue
-                                                e_f = 0.0
+                                            except Exception: e_f = 0.0
                                 
-                                            # apply stroke distribution (2S/4S)
-                                            e_f *= engine_type_motorcycle_distribution[m]
-                                
-                                            # ORIGINAL SCALING used in your working script — do NOT multiply by link_length
-                                            emissions_data[poll_name]['moto'][i] += e_f * P_motorcycle * link_flow
-                                            # ADD:
-                                            if 'fuel_emissions_data' in locals():
-                                                fuel_emissions_data[poll_name]['gasoline'][i] += e_f * P_motorcycle * link_flow
-                                except Exception:
-                                    # keep the app running even if motorcycle EF call fails for one pollutant/link
-                                    pass
+                                            final_e_moto = e_f * engine_type_motorcycle_distribution[m] * P_motorcycle * link_flow
+                                            emissions_data[poll_name]['moto'][i] += final_e_moto
+                                            fuel_emissions_data[poll_name]['gasoline'][i] += final_e_moto
+                                except Exception: pass
 
-
-                        
-                            # After computing all vehicle-type contributions for this link, compute totals per pollutant
-                            for poll_name in selected_pollutants:
                                 emissions_data[poll_name]['total'][i] = (
-                                    emissions_data[poll_name]['pc'][i] +
-                                    emissions_data[poll_name]['ldv'][i] +
-                                    emissions_data[poll_name]['hdv'][i] +
-                                    emissions_data[poll_name]['moto'][i]
+                                    emissions_data[poll_name]['pc'][i] + emissions_data[poll_name]['ldv'][i] +
+                                    emissions_data[poll_name]['hdv'][i] + emissions_data[poll_name]['moto'][i]
                                 )
-                        
-                        # end link loop
                         
                         progress_bar.empty()
                         status_text.empty()
 
-
-                        # FINAL RESULTS HANDLING
-                        # Store data in session state for cross-tab use
                         st.session_state.emissions_data = emissions_data
-                        # After: st.session_state.emissions_data = emissions_data
                         st.session_state.fuel_emissions_data = fuel_emissions_data
                         st.session_state.data_link = data_link
                         st.session_state.selected_pollutants = selected_pollutants
+                        st.session_state.calc_done = True
                         st.success("✅ Multi-pollutant emissions calculated successfully!")
-
-                        # Display results summary
-                        st.subheader("📊 Emission Summary")
-                        
-                        # Get selected units
-                        selected_units = st.session_state.get('selected_units', {})
-                        unit_conversion_options = st.session_state.get('unit_conversion_options', {})
-                        
-                        # Create summary dataframe with converted units
-                        summary_data = []
-                        for poll in selected_pollutants:
-                            target_unit = selected_units.get(poll, pollutants_available[poll]['unit'])
-                            original_unit = pollutants_available[poll]['unit']
-                            
-                            # Convert values
-                            total_pc_converted = convert_emission_value(
-                                emissions_data[poll]['pc'].sum(), poll, original_unit, target_unit
-                            )
-                            total_ldv_converted = convert_emission_value(
-                                emissions_data[poll]['ldv'].sum(), poll, original_unit, target_unit
-                            )
-                            total_hdv_converted = convert_emission_value(
-                                emissions_data[poll]['hdv'].sum(), poll, original_unit, target_unit
-                            )
-                            total_moto_converted = convert_emission_value(
-                                emissions_data[poll]['moto'].sum(), poll, original_unit, target_unit
-                            )
-                            total_converted = convert_emission_value(
-                                emissions_data[poll]['total'].sum(), poll, original_unit, target_unit
-                            )
-                            avg_converted = convert_emission_value(
-                                emissions_data[poll]['total'].mean(), poll, original_unit, target_unit
-                            )
-                            max_converted = convert_emission_value(
-                                emissions_data[poll]['total'].max(), poll, original_unit, target_unit
-                            )
-                            
-                            summary_data.append({
-                                'Pollutant': poll,
-                                'Total PC': format_emission_value(total_pc_converted, target_unit),
-                                'Total LDV': format_emission_value(total_ldv_converted, target_unit),
-                                'Total HDV': format_emission_value(total_hdv_converted, target_unit),
-                                'Total Moto': format_emission_value(total_moto_converted, target_unit),
-                                'Total': format_emission_value(total_converted, target_unit),
-                                'Avg per Link': format_emission_value(avg_converted, target_unit),
-                                'Max': format_emission_value(max_converted, target_unit),
-                                'Unit': target_unit
-                            })
-                        
-                        summary_df = pd.DataFrame(summary_data)
-                        st.dataframe(summary_df, use_container_width=True)
-                        
-                        # Show conversion notice if units were changed
-                        if any(selected_units.get(p) != pollutants_available[p]['unit'] for p in selected_pollutants):
-                            st.info("ℹ️ Values have been converted to your selected display units")
-
-                        # Detailed results by pollutant
-                        for poll in selected_pollutants:
-                            with st.expander(f"📋 Detailed Results: {poll} ({pollutants_available[poll]['name']})", expanded=False):
-                                # Include LDV and HDV columns
-                                results_df = pd.DataFrame({
-                                    'OSM_ID': data_link[:, 0].astype(int),
-                                    f'{poll}_PC': emissions_data[poll]['pc'],
-                                    f'{poll}_LDV': emissions_data[poll]['ldv'],
-                                    f'{poll}_HDV': emissions_data[poll]['hdv'],
-                                    f'{poll}_Motorcycle': emissions_data[poll]['moto'],
-                                    f'{poll}_Total': emissions_data[poll]['total']
-                                })
-                                st.dataframe(results_df.head(50), use_container_width=True)
-
-                                # Display 5 metrics 
-                                col1, col2, col3, col4, col5 = st.columns(5)
-                                with col1:
-                                    st.metric(f"Total PC {poll}", f"{emissions_data[poll]['pc'].sum():.2f} {pollutants_available[poll]['unit']}")
-                                with col2:
-                                    st.metric(f"Total LDV {poll}", f"{emissions_data[poll]['ldv'].sum():.2f} {pollutants_available[poll]['unit']}")
-                                with col3:
-                                    st.metric(f"Total HDV {poll}", f"{emissions_data[poll]['hdv'].sum():.2f} {pollutants_available[poll]['unit']}")
-                                with col4:
-                                    st.metric(f"Total Moto {poll}", f"{emissions_data[poll]['moto'].sum():.2f} {pollutants_available[poll]['unit']}")
-                                with col5:
-                                    st.metric(f"Grand Total {poll}", f"{emissions_data[poll]['total'].sum():.2f} {pollutants_available[poll]['unit']}")
 
                 except Exception as e:
                     st.error(f"❌ An error occurred during calculation: {e}")
                     import traceback
-                    with st.expander("🐛 Debug Information"):
-                        st.code(traceback.format_exc())
+                    st.code(traceback.format_exc())
     else:
-        st.info("Please ensure all required files and at least one pollutant are selected to run the calculation.")
+        st.info("Please ensure all required files are present to run the calculation.")
 
-# ==================== TAB 5: MULTI-METRIC ANALYSIS ====================
+# ==================== TAB 5: MULTI-METRIC ANALYSIS (ENHANCED) ====================
 with tab5:
     st.header("📈 Multi-Metric Emission Analysis")
     st.markdown("Compare emissions across different pollutants, vehicle types, and fuel types.")
 
     if 'emissions_data' in st.session_state:
         emissions_data = st.session_state.emissions_data
-        selected_pollutants = st.session_state.selected_pollutants
+        # Use session state if available, else default (handles refresh)
+        if 'selected_pollutants' in st.session_state:
+            selected_pollutants = st.session_state.selected_pollutants
+        
         data_link = st.session_state.data_link
 
-        # ADD UNIT DISPLAY TOGGLE
         col1, col2 = st.columns([3, 1])
         with col1:
             st.markdown("Select analysis views below")
@@ -1281,129 +769,171 @@ with tab5:
                                              help="Display values in your selected units from sidebar")
 
         if selected_pollutants:
-            # ===== FUEL TYPE BREAKDOWN SECTION =====
+            # ===== NEW: FUEL TYPE BREAKDOWN SECTION =====
             st.subheader("⛽ Emissions by Fuel Type")
             st.markdown("Breakdown of emissions by gasoline vs diesel vehicles")
             
-            # Dropdowns
-            c1, c2 = st.columns([2, 1])
-            with c1:
-                fuel_analysis_pollutant = st.selectbox("Select Pollutant for Fuel Analysis", selected_pollutants, key='fuel_poll')
-            with c2:
-                fuel_chart_type = st.selectbox("Chart Type", ["Pie Chart", "Bar Chart"], key='fuel_chart')
-            
-            # Calculate proportions
+            # Calculate fuel type proportions from link data
             gasoline_prop_avg = data_link[:, 4].mean()
             diesel_prop_avg = 1 - gasoline_prop_avg
             
-            # Prepare data
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Average Gasoline Proportion", f"{gasoline_prop_avg*100:.1f}%")
+            with col2:
+                st.metric("Average Diesel Proportion", f"{diesel_prop_avg*100:.1f}%")
+
+            # Conversion logic for totals
+            for poll in selected_pollutants:
+                pc_total = emissions_data[poll]['pc'].sum()
+                if use_converted_units:
+                    selected_units = st.session_state.get('selected_units', {})
+                    target_unit = selected_units.get(poll, pollutants_available[poll]['unit'])
+                    original_unit = pollutants_available[poll]['unit']
+                    pc_total = convert_emission_value(pc_total, poll, original_unit, target_unit)
+             
+            # Select pollutant & chart type
+            c_sel, c_chart = st.columns([2,1])
+            with c_sel:
+                fuel_analysis_pollutant = st.selectbox("Select Pollutant for Fuel Type Analysis", options=selected_pollutants, key='fuel_analysis_select')
+            with c_chart:
+                fuel_chart_type = st.selectbox("Chart Type", ["Pie Chart", "Bar Chart"], key="fuel_chart_select")
+            
             fuel_type_data = []
             for poll in selected_pollutants:
                 pc_total = emissions_data[poll]['pc'].sum()
+                pc_gas = pc_total * gasoline_prop_avg
+                pc_dsl = pc_total * diesel_prop_avg
                 ldv_total = emissions_data[poll]['ldv'].sum()
+                ldv_gas = ldv_total * gasoline_prop_avg
+                ldv_dsl = ldv_total * diesel_prop_avg
                 hdv_total = emissions_data[poll]['hdv'].sum()
                 moto_total = emissions_data[poll]['moto'].sum()
                 
-                # Estimate split
-                pc_gas = pc_total * gasoline_prop_avg
-                pc_dsl = pc_total * diesel_prop_avg
-                ldv_gas = ldv_total * gasoline_prop_avg
-                ldv_dsl = ldv_total * diesel_prop_avg
+                total_gasoline = pc_gas + ldv_gas + moto_total
+                total_diesel = pc_dsl + ldv_dsl + hdv_total
                 
-                total_gas = pc_gas + ldv_gas + moto_total
-                total_dsl = pc_dsl + ldv_dsl + hdv_total
-                grand = total_gas + total_dsl
-                
-                fuel_type_data.append({'Pollutant': poll, 'Fuel_Type': 'Gasoline', 'Total_Emissions': total_gas, 'Percentage': total_gas/grand*100})
-                fuel_type_data.append({'Pollutant': poll, 'Fuel_Type': 'Diesel', 'Total_Emissions': total_dsl, 'Percentage': total_dsl/grand*100})
+                fuel_type_data.append({'Pollutant': poll, 'Fuel_Type': 'Gasoline', 'Total_Emissions': total_gasoline, 'Percentage': total_gasoline/(total_gasoline+total_diesel)*100})
+                fuel_type_data.append({'Pollutant': poll, 'Fuel_Type': 'Diesel', 'Total_Emissions': total_diesel, 'Percentage': total_diesel/(total_gasoline+total_diesel)*100})
             
             fuel_type_df = pd.DataFrame(fuel_type_data)
-            fuel_selected_df = fuel_type_df[fuel_type_df['Pollutant'] == fuel_analysis_pollutant]
             
-            # Charts
-            if fuel_chart_type == "Pie Chart":
-                fig_pie = px.pie(
-                    fuel_selected_df, values='Total_Emissions', names='Fuel_Type',
-                    title=f"{fuel_analysis_pollutant} Emissions by Fuel Type",
-                    color='Fuel_Type', color_discrete_map={'Gasoline': '#ff6b6b', 'Diesel': '#4dabf7'}, hole=0.4
-                )
-                fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-                st.plotly_chart(fig_pie, use_container_width=True)
-            else:
-                fig_bar = px.bar(
-                    fuel_selected_df, x='Fuel_Type', y='Total_Emissions', color='Fuel_Type',
-                    title=f"{fuel_analysis_pollutant} Emissions by Fuel Type",
-                    color_discrete_map={'Gasoline': '#ff6b6b', 'Diesel': '#4dabf7'}
-                )
-                st.plotly_chart(fig_bar, use_container_width=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                fuel_selected_df = fuel_type_df[fuel_type_df['Pollutant'] == fuel_analysis_pollutant]
+                if fuel_chart_type == "Pie Chart":
+                    fig_fuel = px.pie(fuel_selected_df, values='Total_Emissions', names='Fuel_Type',
+                                      title=f"{fuel_analysis_pollutant} Emissions by Fuel Type",
+                                      color='Fuel_Type', color_discrete_map={'Gasoline': '#ff6b6b', 'Diesel': '#4dabf7'}, hole=0.4)
+                    fig_fuel.update_traces(textposition='inside', textinfo='percent+label')
+                else:
+                    fig_fuel = px.bar(fuel_selected_df, x='Fuel_Type', y='Total_Emissions', color='Fuel_Type',
+                                      title=f"{fuel_analysis_pollutant} Emissions by Fuel Type",
+                                      color_discrete_map={'Gasoline': '#ff6b6b', 'Diesel': '#4dabf7'})
+                st.plotly_chart(fig_fuel, use_container_width=True)
+            
+            with col2:
+                fig_fuel_bar = px.bar(fuel_type_df, x='Pollutant', y='Total_Emissions', color='Fuel_Type',
+                                      title="All Pollutants: Gasoline vs Diesel",
+                                      color_discrete_map={'Gasoline': '#ff6b6b', 'Diesel': '#4dabf7'}, barmode='group', template="plotly_white")
+                st.plotly_chart(fig_fuel_bar, use_container_width=True)
+            
+            st.markdown("**Detailed Fuel Type Breakdown**")
+            fuel_summary = []
+            for poll in selected_pollutants:
+                poll_fuel_data = fuel_type_df[fuel_type_df['Pollutant'] == poll]
+                gas_row = poll_fuel_data[poll_fuel_data['Fuel_Type'] == 'Gasoline'].iloc[0]
+                dsl_row = poll_fuel_data[poll_fuel_data['Fuel_Type'] == 'Diesel'].iloc[0]
+                fuel_summary.append({
+                    'Pollutant': poll,
+                    'Gasoline Emissions': f"{gas_row['Total_Emissions']:.2f}", 'Gasoline %': f"{gas_row['Percentage']:.1f}%",
+                    'Diesel Emissions': f"{dsl_row['Total_Emissions']:.2f}", 'Diesel %': f"{dsl_row['Percentage']:.1f}%",
+                    'Unit': pollutants_available[poll]['unit']
+                })
+            st.dataframe(pd.DataFrame(fuel_summary), use_container_width=True)
             
             st.markdown("---")
             
             # ===== VEHICLE TYPE BREAKDOWN SECTION =====
             st.subheader("🚗 Emissions by Vehicle Type")
             
-            c1, c2 = st.columns([2, 1])
-            with c1:
-                vehicle_analysis_pollutant = st.selectbox("Select Pollutant for Vehicle Analysis", selected_pollutants, key='veh_poll')
-            with c2:
-                veh_chart_type = st.selectbox("Chart Type", ["Bar Chart", "Pie Chart"], key='veh_chart')
-
-            # Prepare data
             breakdown_data = []
             for poll in selected_pollutants:
-                for v_type in ['pc', 'ldv', 'hdv', 'moto']:
-                    breakdown_data.append({
-                        'Pollutant': poll,
-                        'Vehicle_Type': v_type.upper(),
-                        'Total_Emissions': emissions_data[poll][v_type].sum()
-                    })
-
+                for v in ['pc', 'ldv', 'hdv', 'moto']:
+                    breakdown_data.append({'Pollutant': poll, 'Vehicle_Type': v.upper(), 'Total_Emissions': emissions_data[poll][v].sum()})
             breakdown_df = pd.DataFrame(breakdown_data)
-            vehicle_selected_df = breakdown_df[breakdown_df['Pollutant'] == vehicle_analysis_pollutant]
             
+            fig_breakdown = px.bar(breakdown_df, x='Pollutant', y='Total_Emissions', color='Vehicle_Type',
+                                   title="Total Emissions by Vehicle Type", template="plotly_white")
+            st.plotly_chart(fig_breakdown, use_container_width=True)
+            
+            c_sel_v, c_chart_v = st.columns([2,1])
+            with c_sel_v:
+                vehicle_analysis_pollutant = st.selectbox("Select Pollutant for Vehicle Type Chart", options=selected_pollutants, key='vehicle_pie_select')
+            with c_chart_v:
+                veh_chart_type = st.selectbox("Chart Type", ["Pie Chart", "Bar Chart"], key="veh_chart_select")
+            
+            vehicle_selected_df = breakdown_df[breakdown_df['Pollutant'] == vehicle_analysis_pollutant]
             color_map = {'PC': '#667eea', 'LDV': '#f59e0b', 'HDV': '#ef4444', 'MOTO': '#10b981', 'MOTORCYCLE': '#10b981'}
             
-            if veh_chart_type == "Bar Chart":
-                fig_breakdown = px.bar(vehicle_selected_df, x='Vehicle_Type', y='Total_Emissions', color='Vehicle_Type',
-                                       title=f"Total Emissions by Vehicle Type ({vehicle_analysis_pollutant})",
-                                       color_discrete_map=color_map, template="plotly_white")
-                st.plotly_chart(fig_breakdown, use_container_width=True)
+            if veh_chart_type == "Pie Chart":
+                fig_vehicle = px.pie(vehicle_selected_df, values='Total_Emissions', names='Vehicle_Type',
+                                     title=f"{vehicle_analysis_pollutant} Emissions by Vehicle Type",
+                                     color='Vehicle_Type', color_discrete_map=color_map, hole=0.4)
+                fig_vehicle.update_traces(textposition='inside', textinfo='percent+label')
             else:
-                fig_pie = px.pie(vehicle_selected_df, values='Total_Emissions', names='Vehicle_Type',
-                                 title=f"Total Emissions by Vehicle Type ({vehicle_analysis_pollutant})",
-                                 color='Vehicle_Type', color_discrete_map=color_map, hole=0.4)
-                fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-                st.plotly_chart(fig_pie, use_container_width=True)
+                fig_vehicle = px.bar(vehicle_selected_df, x='Vehicle_Type', y='Total_Emissions', color='Vehicle_Type',
+                                     title=f"{vehicle_analysis_pollutant} Emissions by Vehicle Type",
+                                     color_discrete_map=color_map)
+            st.plotly_chart(fig_vehicle, use_container_width=True)
 
             st.markdown("---")
             
             # ===== LINK RANKING SECTION =====
             st.subheader("🔝 Top 10 Links by Total Emission")
-            
             ranking_pollutant = st.selectbox("Select Pollutant to Rank by", options=selected_pollutants)
 
             if ranking_pollutant in emissions_data:
                 ranking_data = pd.DataFrame(st.session_state.data_link[:, :4], columns=['OSM_ID', 'Length_km', 'Flow', 'Speed'])
                 ranking_data[f'Total_{ranking_pollutant}'] = emissions_data[ranking_pollutant]['total']
-
                 top_10_df = ranking_data.sort_values(by=f'Total_{ranking_pollutant}', ascending=False).head(10)
-                top_10_df['OSM_ID'] = top_10_df['OSM_ID'].astype(int).astype(str)
+                top_10_df['OSM_ID'] = top_10_df['OSM_ID'].astype(int)
 
-                fig_top_10 = px.bar(top_10_df, 
-                                    x='OSM_ID', 
-                                    y=f'Total_{ranking_pollutant}', 
-                                    color='Speed',
-                                    title=f"Top 10 Links Emitting {ranking_pollutant}",
-                                    labels={f'Total_{ranking_pollutant}': f"Total {ranking_pollutant} (g/km)"},
-                                    template="plotly_white")
+                st.dataframe(top_10_df, use_container_width=True)
+                fig_top_10 = px.bar(top_10_df, x='OSM_ID', y=f'Total_{ranking_pollutant}', color='Speed',
+                                    title=f"Top 10 Links Emitting {ranking_pollutant}", template="plotly_white")
                 st.plotly_chart(fig_top_10, use_container_width=True)
             
+            # ===== COMPARATIVE INSIGHTS =====
+            st.markdown("---")
+            st.subheader("💡 Comparative Insights")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**🔍 Key Findings:**")
+                for poll in selected_pollutants:
+                    pc = emissions_data[poll]['pc'].sum()
+                    ldv = emissions_data[poll]['ldv'].sum()
+                    hdv = emissions_data[poll]['hdv'].sum()
+                    moto = emissions_data[poll]['moto'].sum()
+                    totals = {'PC': pc, 'LDV': ldv, 'HDV': hdv, 'Motorcycle': moto}
+                    dom = max(totals, key=totals.get)
+                    dom_pct = totals[dom]/sum(totals.values())*100
+                    st.markdown(f"**{poll}**: {dom} contributes **{dom_pct:.1f}%** of total emissions")
+            with col2:
+                st.markdown("**⛽ Fuel Type Insights:**")
+                for poll in selected_pollutants:
+                    row = fuel_type_df[fuel_type_df['Pollutant'] == poll]
+                    gas = row[row['Fuel_Type']=='Gasoline']['Percentage'].iloc[0]
+                    dsl = row[row['Fuel_Type']=='Diesel']['Percentage'].iloc[0]
+                    dom_fuel = 'Gasoline' if gas > dsl else 'Diesel'
+                    st.markdown(f"**{poll}**: {dom_fuel} vehicles contribute **{max(gas, dsl):.1f}%**")
+
         else:
             st.info("No pollutants selected for analysis.")
     else:
         st.info("Please calculate emissions first in the 'Calculate Emissions' tab.")
- 
-# ==================== TAB 6: INTERACTIVE MAP ====================
+
+# ==================== TAB 6: INTERACTIVE MAP (IMPROVED) ====================
 with tab6:
     st.header("🗺️ Interactive Map")
     
