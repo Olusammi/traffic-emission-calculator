@@ -1401,7 +1401,7 @@ with tab6:
 
                     
                         # Convert to Plotly-compatible color
-                        color = sample_colorscale("Viridis", norm_val)[0]
+                        color = sample_colorscale(colorscale, norm_val)[0]
                     
                         width = 0.5 + line_scale * norm_val
                     
@@ -1434,12 +1434,15 @@ with tab6:
                         lat=[],
                         mode="markers",
                         marker=dict(
+                            size=0.1,
+                            color=map_df['val'],
                             colorscale=colorscale,
                             cmin=vmin,
                             cmax=vmax,
                             colorbar=dict(
                                 title=dict(text=f"{map_poll} Emission")
                             )
+                        )
                         ),
                         hoverinfo="none",
                         showlegend=False
@@ -1454,6 +1457,7 @@ with tab6:
                     )
 
                     st.plotly_chart(fig, use_container_width=True)
+                    st.stop()
 
                 except Exception as e:
                     st.error(f"Error generating GPKG map: {e}")
