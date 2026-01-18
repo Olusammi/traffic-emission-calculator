@@ -16,6 +16,7 @@ import matplotlib.colorbar
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
+from plotly.colors import sample_colorscale
 
 st.set_page_config(page_title="Advanced Traffic Emission Calculator", layout="wide", initial_sidebar_state="expanded")
 
@@ -1370,9 +1371,15 @@ with tab6:
 
                     for _, r in map_df.iterrows():
                         geom = r['geom']
-                        color = r['val']
+                    
+                        # Normalize emission value
+                        norm_val = (r['val'] - map_df['val'].min()) / (map_df['val'].max() - map_df['val'].min() + 1e-9)
+                    
+                        # Convert to Plotly-compatible color
+                        color = sample_colorscale("Viridis", norm_val)[0]
+                    
                         width = line_scale * (r['val'] / map_df['val'].max())
-
+                    
                         if geom.geom_type == "LineString":
                             xs, ys = geom.xy
                             fig.add_trace(go.Scattermapbox(
@@ -1382,7 +1389,7 @@ with tab6:
                                 line=dict(width=width, color=color),
                                 hoverinfo="skip"
                             ))
-
+                    
                         elif geom.geom_type == "MultiLineString":
                             for g in geom.geoms:
                                 xs, ys = g.xy
