@@ -1366,7 +1366,19 @@ with tab6:
                     if map_df.empty:
                         st.warning("No data passed current filters.")
                         st.stop()
-
+                    
+                    # >>> SELECT COLOR SCALE BASED ON DROPDOWN <<<
+                    if color_theme == "Jet":
+                        colorscale = "Jet"
+                    elif color_theme == "Viridis":
+                        colorscale = "Viridis"
+                    elif color_theme == "Reds":
+                        colorscale = "Reds"
+                    elif color_theme == "Inferno":
+                        colorscale = "Inferno"
+                    else:
+                        colorscale = "Plasma"
+                    
                     fig = go.Figure()
 
                     for _, r in map_df.iterrows():
@@ -1387,7 +1399,8 @@ with tab6:
                                 lat=list(ys),
                                 mode="lines",
                                 line=dict(width=width, color=color),
-                                hoverinfo="skip"
+                                hoverinfo="skip",
+                                showlegend=False
                             ))
                     
                         elif geom.geom_type == "MultiLineString":
@@ -1398,8 +1411,28 @@ with tab6:
                                     lat=list(ys),
                                     mode="lines",
                                     line=dict(width=width, color=color),
-                                    hoverinfo="skip"
+                                    hoverinfo="skip",
+                                    showlegend=False
                                 ))
+
+                    # >>> ADD COLORBAR FOR EMISSIONS <<<
+                    fig.add_trace(go.Scattermapbox(
+                        lon=[None],
+                        lat=[None],
+                        mode="markers",
+                        marker=dict(
+                            size=0,
+                            color=[map_df['val'].min(), map_df['val'].max()],
+                            colorscale=colorscale,
+                            cmin=map_df['val'].min(),
+                            cmax=map_df['val'].max(),
+                            colorbar=dict(
+                                title=f"{map_poll} Emission",
+                                titleside="right"
+                            )
+                        ),
+                        showlegend=False
+                    ))
 
                     fig.update_layout(
                         mapbox_style=map_style,
