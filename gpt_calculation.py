@@ -1428,23 +1428,20 @@ with tab6:
                                     showlegend=False
                                 ))
 
-                    # >>> ADD COLORBAR FOR EMISSIONS <<<
+                    # >>> ADD PURE COLORBAR (NO GEOMETRY, NO BASE LAYER)
                     fig.add_trace(go.Scattermapbox(
-                        lon=[None],
-                        lat=[None],
+                        lon=[],
+                        lat=[],
                         mode="markers",
                         marker=dict(
-                            size=0,
-                            color=[map_df['val'].min(), map_df['val'].max()],
                             colorscale=colorscale,
-                            cmin=map_df['val'].min(),
-                            cmax=map_df['val'].max(),
+                            cmin=vmin,
+                            cmax=vmax,
                             colorbar=dict(
-                                title=dict(
-                                    text=f"{map_poll} Emission"
-                                )
+                                title=dict(text=f"{map_poll} Emission")
                             )
                         ),
+                        hoverinfo="none",
                         showlegend=False
                     ))
 
