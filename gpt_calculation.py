@@ -1442,7 +1442,6 @@ with tab6:
                             colorbar=dict(
                                 title=dict(text=f"{map_poll} Emission")
                             )
-                        )
                         ),
                         hoverinfo="none",
                         showlegend=False
