@@ -1302,7 +1302,12 @@ with tab6:
         if osm_file is None:
             st.warning("⚠️ Network file is missing. Please check the sidebar.")
         else:
-            file_name = osm_file.name.lower()
+            # --- SAFE FILE NAME RESOLUTION (UPLOAD OR GITHUB DEFAULT) ---
+            if hasattr(osm_file, "name") and osm_file.name is not None:
+                file_name = osm_file.name.lower()
+            else:
+                # Fallback to default filename from GitHub config
+                file_name = DEFAULT_FILES_MAP.get("osm", "").lower()
 
             # ==============================
             # >>> GPKG MODE (Nigeria Scale)
