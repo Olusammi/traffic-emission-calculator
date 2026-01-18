@@ -6,3 +6,4 @@ Pillow>=9.0.0
 osmium
 plotly>=5.0.0
 statsmodels
+geopandas
