@@ -1427,8 +1427,9 @@ with tab6:
                             cmin=map_df['val'].min(),
                             cmax=map_df['val'].max(),
                             colorbar=dict(
-                                title=f"{map_poll} Emission",
-                                titleside="right"
+                                title=dict(
+                                    text=f"{map_poll} Emission"
+                                )
                             )
                         ),
                         showlegend=False
