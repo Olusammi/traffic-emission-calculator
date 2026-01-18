@@ -1378,19 +1378,32 @@ with tab6:
                         colorscale = "Inferno"
                     else:
                         colorscale = "Plasma"
+                        
+                    # >>> QUANTILE-BASED NORMALIZATION (ROBUST FOR SKEWED DATA)
+                    vmin = map_df['val'].quantile(0.05)
+                    vmax = map_df['val'].quantile(0.95)
                     
+                    # Safety fallback
+                    if vmax <= vmin:
+                        vmin = map_df['val'].min()
+                        vmax = map_df['val'].max()
                     fig = go.Figure()
 
                     for _, r in map_df.iterrows():
                         geom = r['geom']
                     
                         # Normalize emission value
-                        norm_val = (r['val'] - map_df['val'].min()) / (map_df['val'].max() - map_df['val'].min() + 1e-9)
+                        # Clamp values to percentile range
+                        clamped_val = max(min(r['val'], vmax), vmin)
+                        
+                        # Normalize to 0–1
+                        norm_val = (clamped_val - vmin) / (vmax - vmin + 1e-9)
+
                     
                         # Convert to Plotly-compatible color
                         color = sample_colorscale("Viridis", norm_val)[0]
                     
-                        width = line_scale * (r['val'] / map_df['val'].max())
+                        width = 0.5 + line_scale * norm_val
                     
                         if geom.geom_type == "LineString":
                             xs, ys = geom.xy
