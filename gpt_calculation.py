@@ -291,15 +291,14 @@ Default fleet compositions (PC Gasoline for LDV, 100% Euro VI for HDV) will be u
 """)
 
 
-# Updated Map parameters for Nigeria
+# Map parameters
 st.sidebar.header("🗺️ Map Parameters")
 st.sidebar.markdown("**Domain Boundaries**")
 col1, col2 = st.sidebar.columns(2)
-# Nigeria approximate bounds: Lon 2.5-14.8, Lat 4.0-14.0
-x_min = col1.number_input("X Min (Lon)", value=2.50000, format="%.5f")
-x_max = col2.number_input("X Max (Lon)", value=15.00000, format="%.5f")
-y_min = col1.number_input("Y Min (Lat)", value=4.00000, format="%.5f")
-y_max = col2.number_input("Y Max (Lat)", value=14.00000, format="%.5f")
+x_min = col1.number_input("X Min (Lon)", value=3.37310, format="%.5f")
+x_max = col2.number_input("X Max (Lon)", value=3.42430, format="%.5f")
+y_min = col1.number_input("Y Min (Lat)", value=6.43744, format="%.5f")
+y_max = col2.number_input("Y Max (Lat)", value=6.46934, format="%.5f")
 tolerance = st.sidebar.number_input("Tolerance", value=0.02, format="%.3f")
 ncore = st.sidebar.number_input("Number of Cores", value=16, min_value=1, max_value=32)
 
