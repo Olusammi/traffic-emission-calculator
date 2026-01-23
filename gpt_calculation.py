@@ -300,8 +300,8 @@ x_min = col1.number_input("X Min (Lon)", value=2.50000, format="%.5f")
 x_max = col2.number_input("X Max (Lon)", value=15.00000, format="%.5f")
 y_min = col1.number_input("Y Min (Lat)", value=4.00000, format="%.5f")
 y_max = col2.number_input("Y Max (Lat)", value=14.00000, format="%.5f")
-tolerance = st.sidebar.number_input("Tolerance", value=0.005, format="%.3f")
-ncore = st.sidebar.number_input("Number of Cores", value=8, min_value=1, max_value=16)
+tolerance = st.sidebar.number_input("Tolerance", value=0.02, format="%.3f")
+ncore = st.sidebar.number_input("Number of Cores", value=16, min_value=1, max_value=32)
 
 # ==================== MAIN TABS ====================
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
