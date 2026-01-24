@@ -438,7 +438,7 @@ with tab5:
     else:
         st.info("Calculate first.")
 
-# --- TAB 6: INTERACTIVE MAP (PYDECK - OPTIMIZED) ---
+# --- TAB 6: INTERACTIVE MAP (FIXED) ---
 with tab6:
     st.header("🗺️ Interactive Map")
     
@@ -452,24 +452,47 @@ with tab6:
             with st.spinner("Preparing Map Geometry..."):
                 try:
                     osm_file.seek(0)
-                    is_gpkg = hasattr(osm_file, 'name') and osm_file.name.endswith('.gpkg')
-                    if is_gpkg:
-                        gdf = gpd.read_file(osm_file)
-                        if gdf.crs.to_epsg() != 4326: gdf = gdf.to_crs(epsg=4326)
-                        st.session_state.map_geo_gdf = gdf
-                    else:
-                        coords, ids, names, types = parse_osm_network_cached(osm_file, x_min, x_max, y_min, y_max, tolerance, ncore)
-                        st.session_state.map_geo = (coords, ids, names, types)
-                except Exception as e: st.error(f"Map Prep Error: {e}"); st.stop()
+                    
+                    # DETECT FILE TYPE
+                    # If uploaded, use .name. If default (BytesIO), check config.
+                    filename = "default.gpkg" 
+                    if hasattr(osm_file, 'name'):
+                        filename = osm_file.name
+                    elif 'osm' in DEFAULT_FILES_MAP:
+                        filename = DEFAULT_FILES_MAP['osm']
 
-        # 2. Advanced Controls (User Requested)
+                    # BRANCH LOGIC: GPKG vs OSM
+                    if filename.endswith('.gpkg'):
+                        # GPKG MODE (Geopandas)
+                        gdf = gpd.read_file(osm_file)
+                        # Ensure Lat/Lon
+                        if gdf.crs and gdf.crs.to_epsg() != 4326:
+                            gdf = gdf.to_crs(epsg=4326)
+                        st.session_state.map_geo_gdf = gdf
+                        # Clear old OSM cache if exists
+                        if 'map_geo' in st.session_state: del st.session_state.map_geo
+                        
+                    else:
+                        # OSM MODE (Osmium)
+                        coords, ids, names, types = parse_osm_network_cached(
+                            osm_file, x_min, x_max, y_min, y_max, tolerance, ncore
+                        )
+                        st.session_state.map_geo = (coords, ids, names, types)
+                        # Clear old GPKG cache if exists
+                        if 'map_geo_gdf' in st.session_state: del st.session_state.map_geo_gdf
+                        
+                except Exception as e:
+                    st.error(f"Map Prep Error: {e}")
+                    st.stop()
+
+        # 2. Controls
         c1, c2, c3, c4 = st.columns(4)
         with c1: view_poll = st.selectbox("Pollutant", selected_pollutants)
         with c2: lw = st.slider("Line Width", 1, 50, 15)
         with c3: pitch = st.slider("3D Pitch", 0, 60, 45)
         with c4: f_speed = st.slider("Min Speed Filter", 0, 100, 0)
 
-        # 3. Data Binding
+        # 3. Prepare Data
         db = st.session_state.emissions_db[view_poll]['total']
         d_link = st.session_state.data_link
         
@@ -482,19 +505,29 @@ with tab6:
         map_data = []
         max_val = np.max(filtered_vals) if len(filtered_vals) > 0 else 1.0
         norm = mcolors.Normalize(vmin=0, vmax=max_val)
-        cmap = cm.get_cmap("Reds") # Default White->Red as requested
+        cmap = cm.get_cmap("Reds") 
 
-        # Geometry Binding
+        # 4. Geometry Binding (Handle both types)
         if 'map_geo_gdf' in st.session_state:
+            # GPKG Logic
             gdf = st.session_state.map_geo_gdf
             for _, row in gdf.iterrows():
                 oid = int(row.get('osm_id', 0))
                 if oid in lookup:
                     val = lookup[oid]
                     color = [int(c*255) for c in cmap(norm(val))[:3]]
+                    
+                    # Extract coordinates from LineString/MultiLineString
                     if row.geometry.geom_type == 'LineString':
-                        map_data.append({"path": list(row.geometry.coords), "emission": val, "color": color, "name": str(oid)})
-        else:
+                        path = list(row.geometry.coords)
+                        map_data.append({"path": path, "emission": val, "color": color, "name": str(oid)})
+                    elif row.geometry.geom_type == 'MultiLineString':
+                        for line in row.geometry.geoms:
+                            path = list(line.coords)
+                            map_data.append({"path": path, "emission": val, "color": color, "name": str(oid)})
+                            
+        elif 'map_geo' in st.session_state:
+            # OSM Logic
             coords, ids, names, types = st.session_state.map_geo
             for r, oid, name in zip(coords, ids, names):
                 if oid in lookup:
@@ -503,9 +536,9 @@ with tab6:
                     map_data.append({"path": r, "emission": val, "color": color, "name": name})
 
         if not map_data:
-            st.error("No data matches current filters.")
+            st.warning("No matching links found. Check if your Link Data IDs match the Map IDs.")
         else:
-            # 4. Render PyDeck
+            # 5. Render PyDeck
             layer = pdk.Layer(
                 type="PathLayer",
                 data=map_data,
@@ -518,8 +551,12 @@ with tab6:
                 opacity=0.9
             )
             
-            start = map_data[0]['path'][0]
-            view_state = pdk.ViewState(latitude=start[1], longitude=start[0], zoom=12, pitch=pitch)
+            # Auto-Center
+            if map_data:
+                start = map_data[0]['path'][0]
+                view_state = pdk.ViewState(latitude=start[1], longitude=start[0], zoom=12, pitch=pitch)
+            else:
+                view_state = pdk.ViewState(latitude=6.5, longitude=3.3, zoom=12, pitch=pitch)
             
             deck = pdk.Deck(
                 layers=[layer],
@@ -529,7 +566,7 @@ with tab6:
             )
             st.pydeck_chart(deck)
             
-            # Matplotlib Legend (White->Red)
+            # Matplotlib Legend
             st.caption(f"Legend: 0 to {max_val:.2f} g/km")
             fig, ax = plt.subplots(figsize=(6, 0.5))
             matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='horizontal')
