@@ -4,6 +4,7 @@ import pandas as pd
 import requests
 import pydeck as pdk
 import matplotlib
+import matplotlib.pyplot as plt  # <--- FIXED: Added this missing import
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 from io import BytesIO
@@ -30,7 +31,7 @@ DEFAULT_FILES_MAP = {
     "hdv": "HDV_parameter.csv",
     "moto": "Moto_parameter.csv",
     "link": "link_osm_with-ldv.dat",
-    "osm": "selected_zone-lagos.osm", 
+    "osm": "nigeria_major_roads.osm", 
     "ecg": "engine_gasoline.dat",
     "ecd": "engine_diesel.dat",
     "ccg": "copert_class_proportion_gasoline.dat",
@@ -261,7 +262,6 @@ with tab3:
                         
                         # Case B: Global (1 row) -> Broadcast
                         elif rows == 1:
-                            # st.toast(f"ℹ️ {name}: Broadcasting 1 row to {N_links} links.")
                             return np.tile(arr, (N_links, 1))
                         
                         # Case C: Mismatch -> Cycle/Repeat (Safe Fallback)
@@ -528,12 +528,11 @@ with tab4:
                 
                 st.pydeck_chart(deck)
                 
-                # Legend Gradient
+                # Legend Gradient (FIXED)
                 st.write("---")
                 st.markdown(f"**Legend ({cmap_name}):** Low (0) → High ({max_val:.2f})")
                 
-                # Create a simple color bar using matplotlib but display as image
-                fig, ax = matplotlib.pyplot.subplots(figsize=(6, 0.5))
+                fig, ax = plt.subplots(figsize=(6, 0.5))
                 cb = matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='horizontal')
                 cb.set_label("g/km")
                 st.pyplot(fig)
@@ -606,4 +605,3 @@ st.sidebar.markdown("""
 9. Download results
 """)
 st.sidebar.info("Built with Streamlit by SHassan 🎈")
-
