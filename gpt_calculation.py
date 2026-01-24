@@ -4,6 +4,7 @@ import pandas as pd
 import requests
 import pydeck as pdk
 import matplotlib
+import matplotlib.pyplot as plt # Explicit alias
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import plotly.express as px
@@ -377,7 +378,7 @@ with tab4:
                                     
                                     t_pc += ef * eng_prop * cap_matrix[:, k] * class_matrix[:, c_idx]
                                     
-                                    # LDV Approximation using PC factors (Robust)
+                                    # LDV
                                     ef_ldv = cop.HEFLightCommercialVehicle(p_const, speeds, cop.engine_type_gasoline if eng_idx==0 else cop.engine_type_diesel, cls_val)
                                     t_ldv += ef_ldv * eng_prop * class_matrix[:, c_idx]
 
@@ -402,7 +403,7 @@ with tab4:
                         t_hdv *= prop_hdv * flows; t_moto *= prop_moto * flows
                         total = t_pc + t_ldv + t_hdv + t_moto
                         
-                        if poll_name == "CO2": # FC to CO2 Conversion (Approx)
+                        if poll_name == "CO2": 
                             factor = (prop_gas * 2392 + prop_dsl * 2640) * 0.01 
                             total *= factor; t_pc *= factor; t_ldv *= factor; t_hdv *= 2640 * 0.01; t_moto *= 2392 * 0.01
 
@@ -418,7 +419,7 @@ with tab4:
                     import traceback
                     st.code(traceback.format_exc())
 
-# --- TAB 5: ANALYSIS (Preserved & Linked) ---
+# --- TAB 5: ANALYSIS (Preserved) ---
 with tab5:
     st.header("📈 Multi-Metric Analysis")
     if 'emissions_db' in st.session_state:
@@ -438,7 +439,7 @@ with tab5:
     else:
         st.info("Calculate first.")
 
-# --- TAB 6: INTERACTIVE MAP (FIXED) ---
+# --- TAB 6: INTERACTIVE MAP (PYDECK - FIXED) ---
 with tab6:
     st.header("🗺️ Interactive Map")
     
@@ -465,11 +466,9 @@ with tab6:
                     if filename.endswith('.gpkg'):
                         # GPKG MODE (Geopandas)
                         gdf = gpd.read_file(osm_file)
-                        # Ensure Lat/Lon
                         if gdf.crs and gdf.crs.to_epsg() != 4326:
                             gdf = gdf.to_crs(epsg=4326)
                         st.session_state.map_geo_gdf = gdf
-                        # Clear old OSM cache if exists
                         if 'map_geo' in st.session_state: del st.session_state.map_geo
                         
                     else:
@@ -478,7 +477,6 @@ with tab6:
                             osm_file, x_min, x_max, y_min, y_max, tolerance, ncore
                         )
                         st.session_state.map_geo = (coords, ids, names, types)
-                        # Clear old GPKG cache if exists
                         if 'map_geo_gdf' in st.session_state: del st.session_state.map_geo_gdf
                         
                 except Exception as e:
@@ -517,7 +515,6 @@ with tab6:
                     val = lookup[oid]
                     color = [int(c*255) for c in cmap(norm(val))[:3]]
                     
-                    # Extract coordinates from LineString/MultiLineString
                     if row.geometry.geom_type == 'LineString':
                         path = list(row.geometry.coords)
                         map_data.append({"path": path, "emission": val, "color": color, "name": str(oid)})
@@ -572,21 +569,19 @@ with tab6:
             matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='horizontal')
             st.pyplot(fig)
 
-# --- TAB 7: DOWNLOAD (Preserved Units Logic) ---
+# --- TAB 7: DOWNLOAD (Preserved) ---
 with tab7:
     st.header("📥 Download Results")
     if 'emissions_db' in st.session_state:
         d_link = st.session_state.data_link
         df_out = pd.DataFrame(d_link[:, :4], columns=['OSM_ID', 'Length', 'Flow', 'Speed'])
         
-        # Apply Unit Conversions if selected
+        # Apply Unit Conversions
         u_opts = st.session_state.get('selected_units', {})
         
         for p in selected_pollutants:
             val = st.session_state.emissions_db[p]['total']
             unit = u_opts.get(p, pollutants_available[p]['unit'])
-            
-            # Simple conversion logic check
             factor = unit_conversion_options.get(p, {}).get(unit, {}).get('factor', 1.0)
             df_out[f'{p}_Total ({unit})'] = val * factor
             
