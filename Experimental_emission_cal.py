@@ -12,8 +12,9 @@ import tempfile
 import os
 
 st.set_page_config(page_title="Traffic Emission Calculator", layout="wide")
-st.title("🚗 Traffic Emission Calculator with Interactive Map")
-st.caption("Built by SHassan | Optimized for Global & Local Fleet Definitions")
+st.title("🚗 Traffic Emission Calculator with OSM Visualization")
+st.caption("Built by SHassan")
+st.markdown("Upload your input files to calculate and visualize traffic emissions")
 
 # ==================== CONFIGURATION: GITHUB DEFAULTS ====================
 REPO_USER = "Olusammi"
@@ -22,14 +23,14 @@ REPO_BRANCH = "main"
 DEFAULT_FOLDER = "default" 
 GITHUB_BASE_URL = f"https://raw.githubusercontent.com/{REPO_USER}/{REPO_NAME}/{REPO_BRANCH}/{DEFAULT_FOLDER}/"
 
-# Mapping your variable keys to your specific filenames
+# Mapping keys to filenames
 DEFAULT_FILES_MAP = {
     "pc": "PC_parameter.csv",
     "ldv": "LDV_parameter.csv",
     "hdv": "HDV_parameter.csv",
     "moto": "Moto_parameter.csv",
     "link": "link_osm_with-ldv.dat",
-    "osm": "selected_zone-lagos.osm", # Must be .osm for the parser
+    "osm": "nigeria_major_roads.osm", 
     "ecg": "engine_gasoline.dat",
     "ecd": "engine_diesel.dat",
     "ccg": "copert_class_proportion_gasoline.dat",
@@ -49,19 +50,26 @@ def fetch_default_file(filename):
         if response.status_code != 200:
             return None
         return BytesIO(response.content)
-    except Exception as e:
+    except Exception:
         return None
 
-def get_input_file(uploader_obj, file_key):
-    """Returns the uploaded file OR the default file if available."""
+def get_file_content(uploader_obj, file_key, label_placeholder):
+    """
+    Returns (file_content_bytes, status_message).
+    Priority: Uploaded -> Default -> None
+    """
     if uploader_obj is not None:
+        label_placeholder.success("📂 Using Uploaded File")
         return uploader_obj
     
-    # If no upload, try default
     if file_key in DEFAULT_FILES_MAP:
         default_name = DEFAULT_FILES_MAP[file_key]
         content = fetch_default_file(default_name)
-        return content
+        if content:
+            label_placeholder.info(f"✅ Using Default: {default_name}")
+            return content
+            
+    label_placeholder.warning("⚠️ No file provided")
     return None
 
 @st.cache_data(show_spinner=False)
@@ -69,7 +77,6 @@ def load_copert_instance(pc_content, ldv_content, hdv_content, moto_content):
     import copert
     with tempfile.TemporaryDirectory() as tmpdir:
         paths = {}
-        # Write contents to temp files because Copert class expects paths
         for name, content in [("pc", pc_content), ("ldv", ldv_content), 
                               ("hdv", hdv_content), ("moto", moto_content)]:
             p = os.path.join(tmpdir, f"{name}.csv")
@@ -92,63 +99,99 @@ def parse_osm_network(osm_content_bytes, x_min, x_max, y_min, y_max, tolerance, 
     finally:
         if os.path.exists(tmp_name): os.unlink(tmp_name)
 
-# --- SIDEBAR ---
-st.sidebar.header("📂 1. Configuration Files")
-copert_files = st.sidebar.expander("COPERT Parameters", expanded=False)
+# --- SIDEBAR UI ---
+st.sidebar.header("📂 Upload Input Files")
+
+# 1. COPERT FILES
+copert_files = st.sidebar.expander("COPERT Parameter Files", expanded=True)
 with copert_files:
-    pc_param = st.file_uploader("PC Params", type=['csv'], key='pc')
-    ldv_param = st.file_uploader("LDV Params", type=['csv'], key='ldv')
-    hdv_param = st.file_uploader("HDV Params", type=['csv'], key='hdv')
-    moto_param = st.file_uploader("Moto Params", type=['csv'], key='moto')
+    # PC
+    pc_up = st.file_uploader("PC Parameter CSV", type=['csv'], key='pc')
+    stat_pc = st.empty()
+    f_pc = get_file_content(pc_up, 'pc', stat_pc)
+    
+    # LDV
+    ldv_up = st.file_uploader("LDV Parameter CSV", type=['csv'], key='ldv')
+    stat_ldv = st.empty()
+    f_ldv = get_file_content(ldv_up, 'ldv', stat_ldv)
+    
+    # HDV
+    hdv_up = st.file_uploader("HDV Parameter CSV", type=['csv'], key='hdv')
+    stat_hdv = st.empty()
+    f_hdv = get_file_content(hdv_up, 'hdv', stat_hdv)
+    
+    # Moto
+    moto_up = st.file_uploader("Moto Parameter CSV", type=['csv'], key='moto')
+    stat_moto = st.empty()
+    f_moto = get_file_content(moto_up, 'moto', stat_moto)
 
-st.sidebar.header("📂 2. Network Data")
-data_files = st.sidebar.expander("Link & Network", expanded=True)
+# 2. DATA FILES
+data_files = st.sidebar.expander("Data Files", expanded=True)
 with data_files:
-    link_osm = st.file_uploader("Link Data (9 Cols)", type=['dat','csv','txt'], key='link')
-    osm_file = st.file_uploader("OSM Network (.osm)", type=['osm'], key='osm')
+    link_up = st.file_uploader("Link OSM Data (.dat or .csv)", type=['dat','csv','txt'], key='link')
+    stat_link = st.empty()
+    f_link = get_file_content(link_up, 'link', stat_link)
+    
+    osm_up = st.file_uploader("OSM Network File (.osm)", type=['osm'], key='osm')
+    stat_osm = st.empty()
+    f_osm = get_file_content(osm_up, 'osm', stat_osm)
 
-st.sidebar.header("📂 3. Fleet Mix (Smart)")
-st.sidebar.info("💡 **Optimization:** You can upload files with 1 row (Global Mix) OR N rows (Local Mix). Defaults loaded if empty.")
+# 3. PROPORTION FILES
+proportion_files = st.sidebar.expander("Proportion Data Files", expanded=False)
+f_props = {}
+with proportion_files:
+    def prop_input(label, key):
+        u = st.file_uploader(label, key=key)
+        s = st.empty()
+        return get_file_content(u, key, s)
 
-prop_uploads = {
-    'ecg': st.file_uploader("Eng Cap Gas", key='ecg'),
-    'ecd': st.file_uploader("Eng Cap Diesel", key='ecd'),
-    'ccg': st.file_uploader("Class Gas", key='ccg'),
-    'ccd': st.file_uploader("Class Diesel", key='ccd'),
-    '2s': st.file_uploader("Moto 2-Stroke", key='2s'),
-    '4s': st.file_uploader("Moto 4-Stroke", key='4s')
-}
+    f_props['ecg'] = prop_input("Engine Capacity Gasoline", 'ecg')
+    f_props['ecd'] = prop_input("Engine Capacity Diesel", 'ecd')
+    f_props['ccg'] = prop_input("COPERT Class Gasoline", 'ccg')
+    f_props['ccd'] = prop_input("COPERT Class Diesel", 'ccd')
+    f_props['2s'] = prop_input("2-Stroke Motorcycle", '2s')
+    f_props['4s'] = prop_input("4-Stroke Motorcycle", '4s')
 
 # Map parameters
 st.sidebar.header("🗺️ Map Parameters")
-with st.sidebar.expander("Boundaries", expanded=False):
-    col1, col2 = st.columns(2)
-    x_min = col1.number_input("X Min", value=3.37310, format="%.5f")
-    x_max = col2.number_input("X Max", value=3.42430, format="%.5f")
-    y_min = col1.number_input("Y Min", value=6.43744, format="%.5f")
-    y_max = col2.number_input("Y Max", value=6.46934, format="%.5f")
-    tolerance = st.number_input("Tolerance", value=0.005, format="%.3f")
-    ncore = st.number_input("Cores", value=8, min_value=1, max_value=16)
+st.sidebar.markdown("**Domain Boundaries**")
+col1, col2 = st.sidebar.columns(2)
+x_min = col1.number_input("X Min (Lon)", value=3.37310, format="%.5f")
+x_max = col2.number_input("X Max (Lon)", value=3.42430, format="%.5f")
+y_min = col1.number_input("Y Min (Lat)", value=6.43744, format="%.5f")
+y_max = col2.number_input("Y Max (Lat)", value=6.46934, format="%.5f")
+tolerance = st.sidebar.number_input("Tolerance", value=0.005, format="%.3f")
+ncore = st.sidebar.number_input("Number of Cores", value=8, min_value=1, max_value=16)
 
-# --- RESOLVE INPUTS ---
-# Determine which file to use (Upload vs Default)
-f_pc = get_input_file(pc_param, 'pc')
-f_ldv = get_input_file(ldv_param, 'ldv')
-f_hdv = get_input_file(hdv_param, 'hdv')
-f_moto = get_input_file(moto_param, 'moto')
-f_link = get_input_file(link_osm, 'link')
-f_osm = get_input_file(osm_file, 'osm')
-
-f_props = {}
-for k, uploader in prop_uploads.items():
-    f_props[k] = get_input_file(uploader, k)
-
-# Tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Data Validation", "⚙️ Calculate", "🗺️ Interactive Map", "📥 Download", "ℹ️ Help"])
+# --- MAIN APP LOGIC ---
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📖 Instructions", "📊 Data Preview", "⚙️ Calculate Emissions", "🗺️ Emission Map", "📥 Download Results"])
 
 with tab1:
-    st.header("Data Validation")
+    st.header("📖 User Guide & Instructions")
+    # (Keeping your original instructions logic)
+    instructions_url = "https://raw.githubusercontent.com/Olusammi/traffic-emission-calculator/refs/heads/main/instruction.md"
+    try:
+        response = requests.get(instructions_url, timeout=5)
+        if response.status_code == 200:
+            st.markdown(response.text)
+        else:
+            raise Exception("GitHub fetch failed")
+    except Exception:
+        try:
+            with open("instructions.md", "r", encoding="utf-8") as f:
+                st.markdown(f.read())
+        except FileNotFoundError:
+            st.markdown("""
+            ## Quick Start
+            1. **Upload Files:** Use the sidebar. If you leave a field empty, the system attempts to load a default file from the GitHub repository.
+            2. **Calculate:** Go to the Calculate tab.
+            3. **Map:** Use the new Interactive Map tab to visualize.
+            """)
+
+with tab2:
+    st.header("Data Preview")
     if f_link is not None:
+        st.subheader("Link OSM Data")
         try:
             f_link.seek(0)
             data_link = pd.read_csv(f_link, sep=r'\s+', header=None, engine='python')
@@ -160,43 +203,31 @@ with tab1:
                     cols += [f"Col_{i}" for i in range(9, data_link.shape[1])]
                 data_link.columns = cols
             else:
-                data_link.columns = [f'Col_{i}' for i in range(data_link.shape[1])]
+                data_link.columns = [f'Column_{i}' for i in range(data_link.shape[1])]
             
-            st.dataframe(data_link.head(5))
+            st.dataframe(data_link.head(20))
+            st.info(f"📌 Total links: {len(data_link)} | Columns: {data_link.shape[1]}")
             
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Total Links", len(data_link))
-            c2.metric("Total Length", f"{data_link.iloc[:,1].sum():.1f} km")
-            
-            # Validation Logic
-            if data_link.shape[1] < 9:
-                st.error(f"❌ Link Data has {data_link.shape[1]} columns. Required: 9.")
+            if data_link.shape[1] >= 9:
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Total Length", f"{data_link['Length_km'].sum():.2f}")
+                c2.metric("Avg Speed", f"{data_link['Speed'].mean():.2f}")
+                c3.metric("Avg Flow", f"{data_link['Flow'].mean():.0f}")
             else:
-                st.success("✅ Link Data Structure Valid (9+ Columns)")
-                if link_osm is None:
-                    st.info("Using Default Link Data from GitHub.")
-                
+                st.warning(f"⚠️ Expected 9 columns but found {data_link.shape[1]}")
         except Exception as e:
             st.error(f"Error reading Link Data: {e}")
     else:
         st.info("Waiting for Link Data (Upload or Default)...")
 
-with tab2:
+with tab3:
     st.header("Calculate Emissions")
     
-    # Check readiness
-    missing_files = []
-    if not f_pc: missing_files.append("PC Params")
-    if not f_ldv: missing_files.append("LDV Params")
-    if not f_link: missing_files.append("Link Data")
-    # Check if all prop files are present (defaults or uploads)
-    if not all(f_props.values()):
-        missing_files.append("Fleet Mix Files")
+    # Check if we have the minimum requirements
+    ready = all([f_pc, f_ldv, f_hdv, f_moto, f_link]) and all(f_props.values())
     
-    if missing_files:
-        st.warning(f"⚠️ Missing files (Check GitHub defaults or Upload): {', '.join(missing_files)}")
-    else:
-        if st.button("🚀 Calculate Emissions (Smart Mode)", type="primary"):
+    if ready:
+        if st.button("🚀 Calculate Emissions", type="primary"):
             with st.spinner("Initializing & Optimizing Inputs..."):
                 try:
                     import copert
@@ -210,36 +241,46 @@ with tab2:
                     data_link = df_link.values
                     N_links = len(data_link)
                     
-                    # 3. SMART LOADER (Broadcasting)
-                    def load_prop_smart(key, name):
+                    # 3. SMART LOADER (Flexible Logic)
+                    def load_prop_flexible(key, name):
                         f = f_props.get(key)
                         f.seek(0)
                         try:
-                            # Try loading as 2D array
                             arr = np.loadtxt(f)
                             if len(arr.shape) == 1:
-                                arr = arr.reshape(1, -1)
+                                arr = arr.reshape(1, -1) # Ensure 2D
                         except:
                             st.error(f"Could not parse {name}")
                             st.stop()
 
                         rows, cols = arr.shape
                         
+                        # Case A: Exact Match
                         if rows == N_links:
                             return arr
+                        
+                        # Case B: Global (1 row) -> Broadcast
                         elif rows == 1:
+                            # st.toast(f"ℹ️ {name}: Broadcasting 1 row to {N_links} links.")
                             return np.tile(arr, (N_links, 1))
+                        
+                        # Case C: Mismatch -> Cycle/Repeat (Safe Fallback)
                         else:
-                            st.error(f"❌ Shape Error in **{name}**.\nFound {rows} rows. Expected either 1 (Global) or {N_links} (Per-Link).")
-                            st.stop()
+                            st.toast(f"⚠️ {name}: Row count {rows} != Link count {N_links}. Cycling data to fit.", icon="⚠️")
+                            # Resize/Tile logic
+                            # Calculate how many times to repeat
+                            reps = int(np.ceil(N_links / rows))
+                            tiled = np.tile(arr, (reps, 1))
+                            # Trim to exact length
+                            return tiled[:N_links]
 
                     # Load Proportions
-                    eng_cap_gas = load_prop_smart('ecg', 'Eng Cap Gas')
-                    eng_cap_dsl = load_prop_smart('ecd', 'Eng Cap Diesel')
-                    cls_gas = load_prop_smart('ccg', 'Class Gas')
-                    cls_dsl = load_prop_smart('ccd', 'Class Diesel')
-                    cls_2s = load_prop_smart('2s', 'Moto 2-Stroke')
-                    cls_4s = load_prop_smart('4s', 'Moto 4-Stroke')
+                    eng_cap_gas = load_prop_flexible('ecg', 'Eng Cap Gas')
+                    eng_cap_dsl = load_prop_flexible('ecd', 'Eng Cap Diesel')
+                    cls_gas = load_prop_flexible('ccg', 'Class Gas')
+                    cls_dsl = load_prop_flexible('ccd', 'Class Diesel')
+                    cls_2s = load_prop_flexible('2s', 'Moto 2-Stroke')
+                    cls_4s = load_prop_flexible('4s', 'Moto 4-Stroke')
 
                     # 4. Extract Variables
                     lengths = data_link[:, 1]
@@ -251,20 +292,21 @@ with tab2:
                     prop_ldv = data_link[:, 7]
                     prop_hdv = data_link[:, 8]
 
-                    # Derived
                     prop_dsl = 1.0 - prop_gas
                     prop_moto = np.maximum(0.0, 1.0 - (prop_pc + prop_ldv + prop_hdv))
                     prop_2s = 1.0 - prop_4s
 
-                    # 5. Calculation Loop
+                    # 5. Calculation
                     total_pc = np.zeros_like(lengths)
                     total_ldv = np.zeros_like(lengths)
                     total_hdv = np.zeros_like(lengths)
                     total_moto = np.zeros_like(lengths)
 
                     prog = st.progress(0)
+                    status_text = st.empty()
                     
                     # --- PC ---
+                    status_text.text("Calculating PC...")
                     pc_configs = [(0, prop_gas, eng_cap_gas), (1, prop_dsl, eng_cap_dsl)]
                     cop_classes = [cop.class_PRE_ECE, cop.class_ECE_15_00_or_01, cop.class_ECE_15_02, 
                                    cop.class_ECE_15_03, cop.class_ECE_15_04, cop.class_Improved_Conventional, 
@@ -290,6 +332,7 @@ with tab2:
                     prog.progress(0.4)
 
                     # --- LDV ---
+                    status_text.text("Calculating LDV...")
                     ldv_configs = [(0, prop_gas), (1, prop_dsl)]
                     for eng_idx, eng_prop in ldv_configs:
                         class_matrix = cls_gas if eng_idx == 0 else cls_dsl
@@ -303,6 +346,7 @@ with tab2:
                     prog.progress(0.6)
 
                     # --- HDV ---
+                    status_text.text("Calculating HDV...")
                     hdv_stds = [cop.class_hdv_Euro_I, cop.class_hdv_Euro_II, cop.class_hdv_Euro_III, 
                                 cop.class_hdv_Euro_IV, cop.class_hdv_Euro_V, cop.class_hdv_Euro_VI]
                     split = 1.0 / len(hdv_stds)
@@ -314,6 +358,7 @@ with tab2:
                     prog.progress(0.8)
 
                     # --- MOTO ---
+                    status_text.text("Calculating Moto...")
                     m_types = [cop.engine_type_moto_two_stroke_more_50, cop.engine_type_moto_four_stroke_50_250]
                     m_props = [prop_2s, prop_4s]
                     m_matrices = [cls_2s, cls_4s]
@@ -331,6 +376,7 @@ with tab2:
                     # --- TOTAL ---
                     total_emissions = total_pc + total_ldv + total_hdv + total_moto
                     prog.progress(1.0)
+                    status_text.text("✅ Calculation complete!")
                     
                     st.session_state.res = {
                         'id': data_link[:, 0],
@@ -339,143 +385,211 @@ with tab2:
                     }
                     st.session_state.data_link = data_link
                     
-                    st.success(f"✅ Calculation Complete for {N_links} links!")
-                    st.metric("Total Emissions", f"{total_emissions.sum():.2f} g/km")
+                    st.success(f"✅ Emissions calculated successfully!")
+                    
+                    # Results Table
+                    results_df = pd.DataFrame({
+                        'OSM_ID': data_link[:, 0].astype(int), 
+                        'Total (g/km)': total_emissions,
+                        'PC': total_pc, 'LDV': total_ldv, 'HDV': total_hdv, 'Moto': total_moto
+                    })
+                    st.dataframe(results_df.head(100))
+                    
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("Total PC", f"{total_pc.sum():.2f}")
+                    c2.metric("Total LDV", f"{total_ldv.sum():.2f}")
+                    c3.metric("Total HDV", f"{total_hdv.sum():.2f}")
+                    c4.metric("Total All", f"{total_emissions.sum():.2f}")
 
                 except Exception as e:
                     st.error(f"Calculation Error: {e}")
                     import traceback
                     st.code(traceback.format_exc())
-
-with tab3:
-    st.header("Interactive Emission Map")
-    if 'res' not in st.session_state:
-        st.info("Calculate emissions first.")
-    elif f_osm is None:
-        st.warning("OSM file missing (Check Defaults or Upload).")
     else:
-        st.markdown("Zoom, Pan, and Hover over roads to see emission details.")
-        
-        # UI for Map
-        col1, col2 = st.columns([1, 3])
-        with col1:
-             st.markdown("**Settings**")
-             line_width = st.slider("Line Width", 1, 50, 20)
-             cmap_name = st.selectbox("Color Palette", ["jet", "viridis", "inferno", "RdYlGn_r"])
-        
-        if st.button("Generate Interactive Map", type="primary"):
-            with st.spinner("Processing Geometry & Colors..."):
+        st.warning("⚠️ Files missing. Please check sidebar uploads or default file availability.")
+
+with tab4:
+    st.header("Emission Factor Map")
+    
+    if 'res' not in st.session_state:
+        st.warning("⚠️ Please calculate emissions first")
+    elif f_osm is None:
+        st.warning("⚠️ Please upload OSM network file")
+    else:
+        # 1. PARSE GEOMETRY (The heavy part - Cached)
+        if 'map_geo' not in st.session_state:
+            with st.spinner("Preparing Map Geometry..."):
                 try:
-                    # 1. Parse OSM
                     f_osm.seek(0)
                     coords, osmids, names, types = parse_osm_network(
                         f_osm, x_min, x_max, y_min, y_max, tolerance, ncore
                     )
-                    
-                    # 2. Match Data
-                    res = st.session_state.res
-                    lookup = dict(zip(res['id'].astype(int), res['total']))
-                    
-                    # Prepare Data for PyDeck
-                    map_data = []
-                    max_val = np.max(res['total']) if len(res['total']) > 0 else 1.0
-                    
-                    # Colormap setup
-                    cmap = cm.get_cmap(cmap_name)
-                    norm = mcolors.Normalize(vmin=0, vmax=max_val)
-
-                    for r, oid, name in zip(coords, osmids, names):
-                        if oid in lookup:
-                            val = lookup[oid]
-                            # Get color [R, G, B] (PyDeck needs 0-255)
-                            rgba = cmap(norm(val))
-                            color = [int(c * 255) for c in rgba[:3]]
-                            
-                            map_data.append({
-                                "path": r,
-                                "name": name if name else "Unknown Road",
-                                "emission": round(val, 2),
-                                "color": color
-                            })
-
-                    df_map = pd.DataFrame(map_data)
-
-                    if df_map.empty:
-                        st.error("No OSM IDs matched data.")
-                    else:
-                        # 3. Render PyDeck
-                        all_points = np.concatenate([d['path'] for d in map_data])
-                        mean_lat = np.mean(all_points[:, 1])
-                        mean_lon = np.mean(all_points[:, 0])
-
-                        view_state = pdk.ViewState(
-                            latitude=mean_lat,
-                            longitude=mean_lon,
-                            zoom=12,
-                            pitch=0
-                        )
-
-                        layer = pdk.Layer(
-                            type="PathLayer",
-                            data=df_map,
-                            pickable=True,
-                            get_color="color",
-                            width_scale=1,
-                            width_min_pixels=2,
-                            get_path="path",
-                            get_width=line_width,
-                        )
-
-                        # Tooltip
-                        tooltip = {
-                            "html": "<b>Road:</b> {name} <br/> <b>Emission:</b> {emission} g/km",
-                            "style": {"backgroundColor": "steelblue", "color": "white"}
-                        }
-
-                        r = pdk.Deck(
-                            layers=[layer],
-                            initial_view_state=view_state,
-                            tooltip=tooltip,
-                            map_style="mapbox://styles/mapbox/light-v9"
-                        )
-                        
-                        st.pydeck_chart(r)
-                        
-                        # Legend (Text based for PyDeck)
-                        st.caption(f"Color Scale: Low (0) to High ({max_val:.1f} g/km) using {cmap_name}")
-                        
+                    st.session_state.map_geo = (coords, osmids, names, types)
                 except Exception as e:
-                    st.error(str(e))
-                    import traceback
-                    st.code(traceback.format_exc())
-
-with tab4:
-    st.header("Download")
-    if 'res' in st.session_state:
-        res = st.session_state.res
-        df = pd.DataFrame({
-            'OSM_ID': res['id'].astype(int),
-            'Total': res['total'],
-            'PC': res['pc'],
-            'LDV': res['ldv'],
-            'HDV': res['hdv'],
-            'Moto': res['moto']
-        })
+                    st.error(f"Map Parsing Error: {e}")
+                    st.stop()
         
-        st.download_button("Download CSV", df.to_csv(index=False), "emissions.csv")
-    else:
-        st.info("Calculate first to enable download.")
+        st.info("📍 Map Geometry Ready. Adjust settings to update visualization live.")
+        
+        # 2. LIVE MAP SETTINGS
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            line_width = st.slider("Line Width", 1, 30, 10, key='lw_slider')
+            opacity = st.slider("Opacity", 0.1, 1.0, 0.8, key='op_slider')
+        with col2:
+            cmap_name = st.selectbox("Color Palette", ["Reds", "YlOrRd", "plasma", "inferno", "jet"], index=0)
+            st.caption("Default: White -> Red (Reds)")
+        with col3:
+            st.markdown("**View**")
+            pitch = st.slider("Pitch (3D)", 0, 60, 0)
+            
+        # 3. RENDER PYDECK (Fast)
+        try:
+            coords, osmids, names, types = st.session_state.map_geo
+            res = st.session_state.res
+            lookup = dict(zip(res['id'].astype(int), res['total']))
+            
+            # Build DataFrame for Deck
+            data_list = []
+            max_val = np.max(res['total']) if len(res['total']) > 0 else 1.0
+            
+            # Map colors
+            norm = mcolors.Normalize(vmin=0, vmax=max_val)
+            cmap = cm.get_cmap(cmap_name)
+            
+            # Background Roads (Gray)
+            bg_paths = []
+            
+            for r, oid, name in zip(coords, osmids, names):
+                if oid in lookup:
+                    val = lookup[oid]
+                    rgba = cmap(norm(val))
+                    color = [int(c * 255) for c in rgba[:3]] # RGB 0-255
+                    
+                    data_list.append({
+                        "path": r,
+                        "name": name if name else "Unknown",
+                        "emission": float(f"{val:.2f}"),
+                        "color": color
+                    })
+                else:
+                    bg_paths.append({"path": r})
+            
+            if not data_list:
+                st.error("No matching links found.")
+            else:
+                # Calculate View State
+                all_pts = np.concatenate([d['path'] for d in data_list])
+                mid_lat = np.mean(all_pts[:,1])
+                mid_lon = np.mean(all_pts[:,0])
+                
+                initial_view = pdk.ViewState(
+                    latitude=mid_lat,
+                    longitude=mid_lon,
+                    zoom=12,
+                    pitch=pitch,
+                )
+                
+                # Layers
+                bg_layer = pdk.Layer(
+                    type="PathLayer",
+                    data=bg_paths,
+                    get_path="path",
+                    get_color=[200, 200, 200, 100], # Faint Gray
+                    width_min_pixels=1,
+                    get_width=2
+                )
+                
+                data_layer = pdk.Layer(
+                    type="PathLayer",
+                    data=data_list,
+                    pickable=True,
+                    get_path="path",
+                    get_color="color",
+                    opacity=opacity,
+                    width_scale=1,
+                    width_min_pixels=2,
+                    get_width=line_width,
+                    cap_rounded=True,
+                    joint_rounded=True
+                )
+                
+                tooltip = {
+                    "html": "<b>{name}</b><br/>Emission: <b>{emission}</b> g/km",
+                    "style": {"backgroundColor": "steelblue", "color": "white", "zIndex": "999"}
+                }
+                
+                deck = pdk.Deck(
+                    layers=[bg_layer, data_layer],
+                    initial_view_state=initial_view,
+                    tooltip=tooltip,
+                    map_style="mapbox://styles/mapbox/light-v9"
+                )
+                
+                st.pydeck_chart(deck)
+                
+                # Legend Gradient
+                st.write("---")
+                st.markdown(f"**Legend ({cmap_name}):** Low (0) → High ({max_val:.2f})")
+                
+                # Create a simple color bar using matplotlib but display as image
+                fig, ax = matplotlib.pyplot.subplots(figsize=(6, 0.5))
+                cb = matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='horizontal')
+                cb.set_label("g/km")
+                st.pyplot(fig)
+
+        except Exception as e:
+            st.error(f"Rendering Error: {e}")
+            import traceback
+            st.code(traceback.format_exc())
 
 with tab5:
-    st.markdown("""
-    ### How Smart Mode Works
-    1. **Global Mix:** Upload files with **1 row**. Applied to all links.
-    2. **Local Mix:** Upload files matching **Link Count**. Applied per link.
-    3. **Defaults:** If you don't upload a file, the system fetches default Nigerian fleet parameters from GitHub.
+    st.header("Download Results")
+    st.markdown("### 📊 Available Outputs")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Emission Data**")
+        if 'res' in st.session_state:
+            res = st.session_state.res
+            # Prepare extended dataframe
+            results_df = pd.DataFrame({
+                'OSM_ID': res['id'].astype(int), 
+                'PC_g_km': res['pc'],
+                'LDV_g_km': res['ldv'],
+                'HDV_g_km': res['hdv'],
+                'Moto_g_km': res['moto'],
+                'Total_g_km': res['total']
+            })
+            csv = results_df.to_csv(index=False)
+            st.download_button(label="⬇️ Download Emission Data CSV", data=csv, file_name="link_hot_emission_factor.csv", mime="text/csv")
+        else:
+            st.info("Calculate emissions first")
     
-    ### Required Columns (9)
-    `OSM_ID` `Length` `Flow` `Speed` `Gas_Prop` `PC_Prop` `4S_Prop` `LDV_Prop` `HDV_Prop`
-    """)
+    st.markdown("---")
+    st.markdown("### 📦 Download All Results")
+    if 'res' in st.session_state:
+        if st.button("📦 Create ZIP Archive"):
+            with st.spinner("Creating ZIP archive..."):
+                try:
+                    zip_buffer = BytesIO()
+                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                        csv_data = results_df.to_csv(index=False)
+                        zip_file.writestr('link_hot_emission_factor.csv', csv_data)
+                        
+                        summary = f"""Emission Calculation Summary
+==================================
+Total All Emissions: {res['total'].sum():.2f} g/km
+"""
+                        zip_file.writestr('summary.txt', summary)
+                    
+                    zip_buffer.seek(0)
+                    st.download_button(label="⬇️ Download Complete Results (ZIP)", data=zip_buffer, 
+                                       file_name="emission_results.zip", mime="application/zip")
+                    st.success("✅ ZIP archive created successfully!")
+                except Exception as e:
+                    st.error(f"Error creating ZIP: {e}")
+    else:
+        st.info("Calculate emissions first to create ZIP archive")
 
 # Footer
 st.sidebar.markdown("---")
