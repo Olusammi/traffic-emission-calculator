@@ -211,17 +211,23 @@ with tab3:
                         st.error("Error: Link data must have 9 columns [ID, Len, Flow, Speed, Gas, PC, 4S, LDV, HDV]")
                         st.stop()
 
-                    # Helper to load prop files
-                    def load_prop(key): 
+                    N_links = len(data_link)
+
+                    # Helper to load prop files AND VALIDATE SHAPE
+                    def load_prop_safe(key, name): 
                         f = prop_uploads[key]; f.seek(0)
-                        return np.loadtxt(f)
+                        arr = np.loadtxt(f)
+                        if arr.shape[0] != N_links:
+                            st.error(f"❌ Dimension Mismatch! \n\nFile **{name}** has {arr.shape[0]} rows, but Link Data has {N_links} rows.\n\nAll input files must have the same number of rows.")
+                            st.stop()
+                        return arr
                     
-                    eng_cap_gas = load_prop('ecg')
-                    eng_cap_dsl = load_prop('ecd')
-                    cls_gas = load_prop('ccg')
-                    cls_dsl = load_prop('ccd')
-                    cls_2s = load_prop('2s')
-                    cls_4s = load_prop('4s')
+                    eng_cap_gas = load_prop_safe('ecg', 'Engine Capacity Gasoline')
+                    eng_cap_dsl = load_prop_safe('ecd', 'Engine Capacity Diesel')
+                    cls_gas = load_prop_safe('ccg', 'COPERT Class Gasoline')
+                    cls_dsl = load_prop_safe('ccd', 'COPERT Class Diesel')
+                    cls_2s = load_prop_safe('2s', '2-Stroke Motorcycle')
+                    cls_4s = load_prop_safe('4s', '4-Stroke Motorcycle')
 
                     # Extract Columns
                     lengths = data_link[:, 1]
@@ -233,7 +239,7 @@ with tab3:
                     prop_ldv = data_link[:, 7]
                     prop_hdv = data_link[:, 8]
 
-                    # Derived Props
+                    # Derived Proportions
                     prop_dsl = 1.0 - prop_gas
                     prop_moto = np.maximum(0.0, 1.0 - (prop_pc + prop_ldv + prop_hdv))
                     prop_2s = 1.0 - prop_4s
