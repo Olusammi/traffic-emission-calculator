@@ -30,7 +30,7 @@ DEFAULT_FILES_MAP = {
     "hdv": "HDV_parameter.csv",
     "moto": "Moto_parameter.csv",
     "link": "link_osm_with-ldv.dat",
-    "osm": "selected_zone-lagos.osm", 
+    "osm": "nigeria_major_roads.gpkg", 
     "ecg": "engine_gasoline.dat",
     "ecd": "engine_diesel.dat",
     "ccg": "copert_class_proportion_gasoline.dat",
