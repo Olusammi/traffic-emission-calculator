@@ -486,7 +486,7 @@ with tab6:
                 with map_col:
                     st.pydeck_chart(deck, height=MAP_HEIGHT)
 
-                LEGEND_HEIGHT_IN = MAP_HEIGHT / 400
+                LEGEND_HEIGHT_IN = MAP_HEIGHT / 200
 
                 
                 with legend_col:
