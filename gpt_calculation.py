@@ -481,7 +481,7 @@ with tab6:
                 
                 map_col, legend_col = st.columns([8, 1])
 
-                MAP_HEIGHT = 520  # pixels (tweak once, then forget)
+                MAP_HEIGHT = 1000  # pixels (tweak once, then forget)
 
                 with map_col:
                     st.pydeck_chart(deck, height=MAP_HEIGHT)
