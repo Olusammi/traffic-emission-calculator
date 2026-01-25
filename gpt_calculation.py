@@ -477,17 +477,26 @@ with tab6:
                 deck = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"html": "<b>ID:</b> {osm_id}<br/><b>Emission:</b> {emission:.2f} g/km"}, map_style=map_styles[map_style_name])
                 
                 # Power BI Style Layout
-                st.pydeck_chart(deck)
+                #st.pydeck_chart(deck)
                 
-                # Horizontal Legend Below Map
-                st.markdown("---")
-                col_L1, col_L2 = st.columns([1, 10])
-                with col_L1: st.write(f"**{view_poll} (g/km)**")
-                with col_L2:
-                    # Slim, Horizontal Colorbar
-                    fig, ax = plt.subplots(figsize=(10, 0.3)) 
-                    matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='vertical')
-                    st.pyplot(fig, use_container_width=True)
+                map_col, legend_col = st.columns([8, 1])
+
+                with map_col:
+                    st.pydeck_chart(deck)
+                
+                with legend_col:
+                    st.write(f"**{view_poll} (g/km)**")
+                
+                    fig, ax = plt.subplots(figsize=(1.2, 4))
+                    matplotlib.colorbar.ColorbarBase(
+                        ax,
+                        cmap=cmap,
+                        norm=norm,
+                        orientation="vertical"
+                    )
+                    ax.tick_params(labelsize=8)
+                    st.pyplot(fig)
+
 
 with tab7:
     st.header("📥 Download Results")
