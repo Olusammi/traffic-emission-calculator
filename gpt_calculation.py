@@ -3,11 +3,11 @@ import numpy as np
 import pandas as pd
 import requests
 import matplotlib
+import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.colors import sample_colorscale
 from io import BytesIO
 import zipfile
 import tempfile
@@ -78,10 +78,12 @@ st.markdown("""
     .stAlert {
         background-color: #e7f3ff;
     }
-    /* Map Container Style */
+    /* Enhance Plotly Chart Container */
     .stPlotlyChart {
         border-radius: 8px;
-        overflow: hidden;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        background: white;
+        padding: 5px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -112,7 +114,7 @@ def fetch_default_file(filename):
         return None
 
 def get_file_input(label, type_list, key):
-    """Smart Uploader: Checks upload -> Checks Default -> Returns File Object"""
+    """Smart Uploader"""
     uploaded_file = st.file_uploader(label, type=type_list, key=key)
     status_container = st.empty()
     
@@ -385,7 +387,7 @@ with tab5:
         with c2: st.dataframe(df_v, hide_index=True)
     else: st.info("Calculate first.")
 
-# --- TAB 6: INTERACTIVE MAP (PLOTLY EXPRESS - FINAL FIX) ---
+# --- TAB 6: INTERACTIVE MAP (PLOTLY MAPBOX FIXED) ---
 with tab6:
     st.header("🗺️ Interactive Map")
     if 'emissions_db' not in st.session_state:
@@ -395,7 +397,7 @@ with tab6:
     else:
         # Load Geometry
         if 'map_geo_gdf' not in st.session_state:
-            with st.spinner("Loading Map Geometry..."):
+            with st.spinner("Loading Map Geometry (One-time setup)..."):
                 try:
                     osm_file.seek(0)
                     with tempfile.NamedTemporaryFile(delete=False, suffix='.gpkg') as tmp:
@@ -407,14 +409,12 @@ with tab6:
                         from shapely.geometry import LineString
                         rows = [{'osm_id': int(oid), 'name': str(name), 'geometry': LineString(path)} for path, oid, name in zip(coords, ids, names) if len(path) > 1]
                         gdf = gpd.GeoDataFrame(rows, crs="EPSG:4326")
-
-                    # FORCE TYPE CONVERSION (Fixes TypeError)
+                    
                     if 'osm_id' in gdf.columns: 
                         gdf['osm_id'] = pd.to_numeric(gdf['osm_id'], errors='coerce').fillna(0).astype(int)
                     elif 'id' in gdf.columns: 
                         gdf['osm_id'] = pd.to_numeric(gdf['id'], errors='coerce').fillna(0).astype(int)
                     
-                    # Ensure Name is String
                     if 'name' not in gdf.columns: gdf['name'] = "Unknown"
                     gdf['name'] = gdf['name'].fillna("Unknown").astype(str)
 
@@ -423,12 +423,21 @@ with tab6:
                     os.unlink(tmp_path)
                 except Exception as e: st.error(f"Map Prep Error: {e}"); st.stop()
 
-        # Controls
+        # Map Controls
         with st.expander("Map Controls", expanded=True):
             c1, c2, c3, c4 = st.columns(4)
             with c1: view_poll = st.selectbox("Pollutant", selected_pollutants)
             with c2: 
-                map_style = st.selectbox("Base Map", ["open-street-map", "carto-positron", "carto-darkmatter", "white-bg"])
+                # Valid Mapbox styles for Plotly
+                style_map = {
+                    "Streets": "open-street-map",
+                    "Light": "carto-positron",
+                    "Dark": "carto-darkmatter",
+                    "Satellite": "white-bg", # Requires external tile layer usually, keeping basic for stability
+                    "Outdoors": "stamen-terrain"
+                }
+                style_label = st.selectbox("Base Map", list(style_map.keys()))
+                selected_map_style = style_map[style_label]
             with c3:
                 colorscale_name = st.selectbox("Color Palette", ["Reds", "Plasma", "Inferno", "Viridis", "Jet"])
             with c4: f_speed = st.slider("Min Speed Filter", 0, 130, 0)
@@ -448,17 +457,16 @@ with tab6:
             else:
                 st.success(f"✅ Visualizing {len(merged_gdf)} roads.")
                 
-                # --- COORDINATE EXTRACTION (Fixes TypeError in px.line_mapbox) ---
-                # We essentially "explode" the geometry into a simple lat/lon dataframe
-                # This removes any GeoPandas complexity that Plotly might choke on
-                
+                # PERFORMANCE CAP: Prevent browser crash
+                if len(merged_gdf) > 10000:
+                    st.toast(f"Data capped at top 10,000 links for performance.", icon="⚠️")
+                    merged_gdf = merged_gdf.sort_values('emission', ascending=False).head(10000)
+
+                # EXTRACT COORDINATES (Fixes TypeError in px.line_mapbox)
                 plot_data = []
-                # Limit for performance if full country
-                display_gdf = merged_gdf if len(merged_gdf) < 10000 else merged_gdf.sort_values('emission', ascending=False).head(10000)
-                
-                for _, row in display_gdf.iterrows():
-                    gid = str(row['osm_id']) # ID must be string for grouping
-                    val = float(row['emission']) # Val must be float
+                for _, row in merged_gdf.iterrows():
+                    gid = str(row['osm_id']) # Must be string for group
+                    val = float(row['emission']) # Must be float
                     nm = str(row['name'])
                     
                     geoms = []
@@ -467,6 +475,7 @@ with tab6:
                     
                     for line in geoms:
                         coords = list(line.coords)
+                        # Unpack lat/lon
                         lons, lats = zip(*coords)
                         for ln, lt in zip(lons, lats):
                             plot_data.append({'osm_id': gid, 'lat': lt, 'lon': ln, 'emission': val, 'name': nm})
@@ -474,27 +483,32 @@ with tab6:
                 df_plot = pd.DataFrame(plot_data)
                 
                 if not df_plot.empty:
+                    # RENDER
                     fig = px.line_mapbox(
                         df_plot, lat="lat", lon="lon", color="emission",
                         line_group="osm_id", hover_name="name",
                         hover_data={"emission": ":.2f", "lat": False, "lon": False, "osm_id": True},
                         color_continuous_scale=colorscale_name,
                         zoom=10 if selected_state != "All Nigeria" else 6,
-                        mapbox_style=map_style
+                        mapbox_style=selected_map_style
                     )
-                    fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0}, height=600)
-                    # Move legend inside map to look like ArcGIS
-                    fig.update_layout(coloraxis_colorbar=dict(
-                        title=f"{view_poll} (g/km)",
-                        thicknessmode="pixels", thickness=15,
-                        lenmode="fraction", len=0.3,
-                        yanchor="bottom", y=0.05,
-                        xanchor="right", x=0.95,
-                        bgcolor="rgba(255,255,255,0.8)"
-                    ))
+                    
+                    # Layout Tweaks
+                    fig.update_layout(
+                        margin={"r":0,"t":0,"l":0,"b":0},
+                        height=600,
+                        coloraxis_colorbar=dict(
+                            title=f"{view_poll}<br>(g/km)",
+                            thickness=15,
+                            len=0.5,
+                            yanchor="bottom", y=0.05,
+                            xanchor="right", x=0.95,
+                            bgcolor="rgba(255,255,255,0.7)"
+                        )
+                    )
                     st.plotly_chart(fig, use_container_width=True)
                 else:
-                    st.error("Error processing map coordinates.")
+                    st.error("Error: Empty map data.")
 
 with tab7:
     st.header("📥 Download Results")
