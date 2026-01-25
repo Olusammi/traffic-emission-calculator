@@ -4,7 +4,7 @@ import pandas as pd
 import requests
 import pydeck as pdk
 import matplotlib
-import matplotlib.pyplot as plt  # <--- FIXED: Explicit Import
+import matplotlib.pyplot as plt # Explicit Import to fix NameError
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import plotly.express as px
@@ -92,12 +92,10 @@ st.markdown("---")
 def fetch_default_file(filename):
     """Fetches a default file from GitHub."""
     try:
-        # Handle GPKG vs OSM extension for network file
         if filename.endswith(".gpkg"):
              url = GITHUB_BASE_URL + filename
              r = requests.get(url, timeout=15)
              if r.status_code == 200: return BytesIO(r.content)
-             # Fallback to .osm if gpkg fails
              url = GITHUB_BASE_URL + filename.replace(".gpkg", ".osm")
              r = requests.get(url, timeout=15)
              if r.status_code == 200: return BytesIO(r.content)
@@ -383,7 +381,7 @@ with tab5:
         with c2: st.dataframe(df_v, hide_index=True)
     else: st.info("Calculate first.")
 
-# --- TAB 6: INTERACTIVE MAP (VERTICAL LEGEND) ---
+# --- TAB 6: INTERACTIVE MAP (VERTICAL LEGEND + DROPDOWNS) ---
 with tab6:
     st.header("🗺️ Interactive Map")
     if 'emissions_db' not in st.session_state:
@@ -411,10 +409,14 @@ with tab6:
                     os.unlink(tmp_path)
                 except Exception as e: st.error(f"Map Prep Error: {e}"); st.stop()
 
+        # Map Controls Row
         c1, c2, c3, c4 = st.columns(4)
         with c1: view_poll = st.selectbox("Pollutant", selected_pollutants)
-        with c2: lw = st.slider("Line Width", 1, 50, 15)
-        with c3: pitch = st.slider("3D Pitch", 0, 60, 45)
+        with c2: 
+            map_style_name = st.selectbox("Base Map", ["Light", "Dark", "Satellite", "Streets", "Outdoors"])
+            map_styles = {"Light": "mapbox://styles/mapbox/light-v9", "Dark": "mapbox://styles/mapbox/dark-v9", "Satellite": "mapbox://styles/mapbox/satellite-v9", "Streets": "mapbox://styles/mapbox/streets-v11", "Outdoors": "mapbox://styles/mapbox/outdoors-v11"}
+        with c3:
+            cmap_name = st.selectbox("Color Palette", ["Reds", "Plasma", "Inferno", "Viridis", "Jet"])
         with c4: f_speed = st.slider("Min Speed Filter", 0, 130, 0)
 
         with st.spinner(f"Rendering {selected_state}..."):
@@ -433,21 +435,24 @@ with tab6:
                 st.success(f"✅ Visualizing {match_count} roads in {selected_state}.")
                 max_val = merged_gdf['emission'].max()
                 norm = mcolors.Normalize(vmin=0, vmax=max_val)
-                cmap = cm.get_cmap("Reds")
+                cmap = cm.get_cmap(cmap_name)
                 merged_gdf['color'] = merged_gdf['emission'].apply(lambda val: [int(c*255) for c in cmap(norm(val))[:3]])
                 geojson_data = getattr(merged_gdf, "__geo_interface__", None) or merged_gdf.to_json()
-                layer = pdk.Layer(type="GeoJsonLayer", data=geojson_data, pickable=True, stroked=True, filled=False, get_line_color="properties.color", get_line_width=lw, line_width_min_pixels=1, opacity=0.9)
-                minx, miny, maxx, maxy = merged_gdf.total_bounds
-                view_state = pdk.ViewState(latitude=(miny+maxy)/2, longitude=(minx+maxx)/2, zoom=10, pitch=pitch)
-                deck = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"html": "<b>ID:</b> {osm_id}<br/><b>Emission:</b> {emission:.2f} g/km"}, map_style="mapbox://styles/mapbox/light-v9")
                 
-                # --- LAYOUT: MAP (Left) + LEGEND (Right) ---
-                col_map, col_legend = st.columns([6, 1])
+                layer = pdk.Layer(type="GeoJsonLayer", data=geojson_data, pickable=True, stroked=True, filled=False, get_line_color="properties.color", get_line_width=15, line_width_min_pixels=1, opacity=0.9)
+                minx, miny, maxx, maxy = merged_gdf.total_bounds
+                view_state = pdk.ViewState(latitude=(miny+maxy)/2, longitude=(minx+maxx)/2, zoom=10, pitch=45)
+                
+                deck = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"html": "<b>ID:</b> {osm_id}<br/><b>Emission:</b> {emission:.2f} g/km"}, map_style=map_styles[map_style_name])
+                
+                # Layout: Map Left, Slim Legend Right
+                col_map, col_leg = st.columns([6, 1])
                 with col_map:
                     st.pydeck_chart(deck)
-                with col_legend:
+                with col_leg:
+                    st.markdown(f"**{view_poll}**")
                     st.caption("g/km")
-                    fig, ax = plt.subplots(figsize=(1, 6))
+                    fig, ax = plt.subplots(figsize=(0.2, 5)) # Slim Legend
                     matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='vertical')
                     st.pyplot(fig, use_container_width=True)
 
