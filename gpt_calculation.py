@@ -217,13 +217,17 @@ with proportion_files:
     prop_files['2s'] = get_file_input("2-Stroke Moto", ['dat', 'txt'], '2s')
     prop_files['4s'] = get_file_input("4-Stroke Moto", ['dat', 'txt'], '4s')
 
+# Map parameters
 st.sidebar.header("🗺️ Map Parameters")
 with st.sidebar.expander("Boundaries", expanded=False):
+    st.info("Default boundaries set to Nigeria coverage.")
     col1, col2 = st.columns(2)
-    x_min = col1.number_input("X Min", value=3.37310, format="%.5f")
-    x_max = col2.number_input("X Max", value=3.42430, format="%.5f")
-    y_min = col1.number_input("Y Min", value=6.43744, format="%.5f")
-    y_max = col2.number_input("Y Max", value=6.46934, format="%.5f")
+    # Nigeria approximate boundaries: Lon (2.6 - 14.7), Lat (4.2 - 13.9)
+    x_min = col1.number_input("X Min (Lon)", value=2.60000, format="%.5f") 
+    x_max = col2.number_input("X Max (Lon)", value=14.70000, format="%.5f")
+    y_min = col1.number_input("Y Min (Lat)", value=4.20000, format="%.5f")
+    y_max = col2.number_input("Y Max (Lat)", value=14.00000, format="%.5f")
+    
     tolerance = st.number_input("Tolerance", value=0.005, format="%.3f")
     ncore = st.number_input("Cores", value=8, min_value=1, max_value=16)
 
