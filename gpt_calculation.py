@@ -4,7 +4,7 @@ import pandas as pd
 import requests
 import pydeck as pdk
 import matplotlib
-import matplotlib.pyplot as plt # Explicit Import to fix NameError
+import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import plotly.express as px
@@ -79,6 +79,11 @@ st.markdown("""
     .stAlert {
         background-color: #e7f3ff;
     }
+    /* Make map container nicer */
+    .stDeckGlJsonChart {
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        border-radius: 8px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -92,6 +97,7 @@ st.markdown("---")
 def fetch_default_file(filename):
     """Fetches a default file from GitHub."""
     try:
+        # Handle GPKG vs OSM extension
         if filename.endswith(".gpkg"):
              url = GITHUB_BASE_URL + filename
              r = requests.get(url, timeout=15)
@@ -381,7 +387,7 @@ with tab5:
         with c2: st.dataframe(df_v, hide_index=True)
     else: st.info("Calculate first.")
 
-# --- TAB 6: INTERACTIVE MAP (VERTICAL LEGEND + DROPDOWNS) ---
+# --- TAB 6: INTERACTIVE MAP (POWER BI STYLE) ---
 with tab6:
     st.header("🗺️ Interactive Map")
     if 'emissions_db' not in st.session_state:
@@ -389,6 +395,7 @@ with tab6:
     elif osm_file is None:
         st.warning("⚠️ OSM Network file missing.")
     else:
+        # Load Geometry
         if 'map_geo_gdf' not in st.session_state:
             with st.spinner("Loading Map Geometry (One-time setup)..."):
                 try:
@@ -409,15 +416,26 @@ with tab6:
                     os.unlink(tmp_path)
                 except Exception as e: st.error(f"Map Prep Error: {e}"); st.stop()
 
-        # Map Controls Row
-        c1, c2, c3, c4 = st.columns(4)
-        with c1: view_poll = st.selectbox("Pollutant", selected_pollutants)
-        with c2: 
-            map_style_name = st.selectbox("Base Map", ["Light", "Dark", "Satellite", "Streets", "Outdoors"])
-            map_styles = {"Light": "mapbox://styles/mapbox/light-v9", "Dark": "mapbox://styles/mapbox/dark-v9", "Satellite": "mapbox://styles/mapbox/satellite-v9", "Streets": "mapbox://styles/mapbox/streets-v11", "Outdoors": "mapbox://styles/mapbox/outdoors-v11"}
-        with c3:
-            cmap_name = st.selectbox("Color Palette", ["Reds", "Plasma", "Inferno", "Viridis", "Jet"])
-        with c4: f_speed = st.slider("Min Speed Filter", 0, 130, 0)
+        # Dashboard Controls (Power BI Style Header)
+        with st.expander("Map & Visual Controls", expanded=True):
+            c1, c2, c3, c4 = st.columns(4)
+            with c1: view_poll = st.selectbox("Pollutant", selected_pollutants)
+            with c2: 
+                # Map Style Dropdown
+                map_style_name = st.selectbox("Base Map", ["Light", "Dark", "Satellite", "Streets", "Outdoors"])
+                map_styles = {
+                    "Light": "mapbox://styles/mapbox/light-v9", 
+                    "Dark": "mapbox://styles/mapbox/dark-v9", 
+                    "Satellite": "mapbox://styles/mapbox/satellite-v9", 
+                    "Streets": "mapbox://styles/mapbox/streets-v11", 
+                    "Outdoors": "mapbox://styles/mapbox/outdoors-v11"
+                }
+            with c3:
+                # Safe Colormap mapping
+                cmap_name = st.selectbox("Color Palette", ["Reds", "Plasma", "Inferno", "Viridis", "Jet"])
+                cmap_key_map = {"Reds": "Reds", "Plasma": "plasma", "Inferno": "inferno", "Viridis": "viridis", "Jet": "jet"}
+                selected_cmap = cmap_key_map[cmap_name]
+            with c4: f_speed = st.slider("Min Speed Filter", 0, 130, 0)
 
         with st.spinner(f"Rendering {selected_state}..."):
             db_vals = st.session_state.emissions_db[view_poll]['total']
@@ -426,6 +444,7 @@ with tab6:
             df_emissions = df_emissions[df_emissions['speed'] >= f_speed]
             gdf_map = st.session_state.map_geo_gdf
             if selected_state != "All Nigeria": gdf_map = gdf_map.cx[x_min:x_max, y_min:y_max]
+            
             merged_gdf = gdf_map.merge(df_emissions, on='osm_id', how='inner')
             match_count = len(merged_gdf)
             
@@ -434,9 +453,16 @@ with tab6:
             else:
                 st.success(f"✅ Visualizing {match_count} roads in {selected_state}.")
                 max_val = merged_gdf['emission'].max()
+                
+                # Fixed: Use matplotlib.colormaps for safety
+                try:
+                    cmap = matplotlib.colormaps[selected_cmap]
+                except:
+                    cmap = matplotlib.colormaps['Reds'] # Fallback
+                    
                 norm = mcolors.Normalize(vmin=0, vmax=max_val)
-                cmap = cm.get_cmap(cmap_name)
                 merged_gdf['color'] = merged_gdf['emission'].apply(lambda val: [int(c*255) for c in cmap(norm(val))[:3]])
+                
                 geojson_data = getattr(merged_gdf, "__geo_interface__", None) or merged_gdf.to_json()
                 
                 layer = pdk.Layer(type="GeoJsonLayer", data=geojson_data, pickable=True, stroked=True, filled=False, get_line_color="properties.color", get_line_width=15, line_width_min_pixels=1, opacity=0.9)
@@ -445,15 +471,17 @@ with tab6:
                 
                 deck = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"html": "<b>ID:</b> {osm_id}<br/><b>Emission:</b> {emission:.2f} g/km"}, map_style=map_styles[map_style_name])
                 
-                # Layout: Map Left, Slim Legend Right
-                col_map, col_leg = st.columns([6, 1])
-                with col_map:
-                    st.pydeck_chart(deck)
-                with col_leg:
-                    st.markdown(f"**{view_poll}**")
-                    st.caption("g/km")
-                    fig, ax = plt.subplots(figsize=(0.2, 5)) # Slim Legend
-                    matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='vertical')
+                # Power BI Style Layout
+                st.pydeck_chart(deck)
+                
+                # Horizontal Legend Below Map
+                st.markdown("---")
+                col_L1, col_L2 = st.columns([1, 10])
+                with col_L1: st.write(f"**{view_poll} (g/km)**")
+                with col_L2:
+                    # Slim, Horizontal Colorbar
+                    fig, ax = plt.subplots(figsize=(10, 0.3)) 
+                    matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='horizontal')
                     st.pyplot(fig, use_container_width=True)
 
 with tab7:
