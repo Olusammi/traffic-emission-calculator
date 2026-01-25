@@ -4,6 +4,7 @@ import pandas as pd
 import requests
 import pydeck as pdk
 import matplotlib
+import matplotlib.pyplot as plt  # <--- FIXED: Explicit Import
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import plotly.express as px
@@ -39,7 +40,7 @@ DEFAULT_FILES_MAP = {
     "4s": "copert_class_proportion_4_stroke_motorcycle_50_250.dat"
 }
 
-# ==================== STATE BOUNDARIES (Approximate) ====================
+# ==================== STATE BOUNDARIES ====================
 NIGERIA_STATES = {
     "All Nigeria": [2.6, 4.2, 14.7, 14.0],
     "Abia": [7.0, 4.8, 7.9, 6.0], "Adamawa": [11.0, 7.0, 14.0, 11.0], "Akwa Ibom": [7.5, 4.4, 8.5, 5.5],
@@ -232,17 +233,13 @@ with proportion_files:
 
 st.sidebar.header("🗺️ Map Parameters")
 with st.sidebar.expander("Boundaries (State/Region)", expanded=True):
-    # --- NEW: STATE SELECTOR ---
     selected_state = st.selectbox("Select Region/State to Analyze", list(NIGERIA_STATES.keys()))
-    
-    # Auto-fill coords based on selection
     defaults = NIGERIA_STATES[selected_state]
     col1, col2 = st.columns(2)
     x_min = col1.number_input("X Min (Lon)", value=defaults[0], format="%.5f")
     x_max = col2.number_input("X Max (Lon)", value=defaults[2], format="%.5f")
     y_min = col1.number_input("Y Min (Lat)", value=defaults[1], format="%.5f")
     y_max = col2.number_input("Y Max (Lat)", value=defaults[3], format="%.5f")
-    
     tolerance = st.number_input("Tolerance", value=0.005, format="%.3f")
     ncore = st.number_input("Cores", value=8, min_value=1, max_value=16)
 
@@ -253,7 +250,6 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "🗺️ Interactive Map", "📥 Download Results"
 ])
 
-# --- TAB 1 & 3: Preserved Content ---
 with tab1:
     st.header("📖 User Guide")
     st.info("New Feature: Use the 'Boundaries' dropdown in the sidebar to visualize specific states instantly.")
@@ -273,7 +269,6 @@ with tab3:
     elif sel_f == "NOx": st.latex(r'''EF_{NOx} = EF_{base}(V) \cdot \left(1 + k \cdot (T_{amb} - 20)\right)''')
     st.info("Formulas based on EMEP/EEA Guidebook 2019")
 
-# --- TAB 2: DATA PREVIEW ---
 with tab2:
     st.header("📊 Data Preview")
     if link_osm:
@@ -285,43 +280,33 @@ with tab2:
                 if data_link.shape[1] > 9: data_link.columns += [f"Col_{i}" for i in range(9, data_link.shape[1])]
             else:
                 data_link.columns = [f'Col_{i}' for i in range(data_link.shape[1])]
-            
             st.dataframe(data_link.head(20), use_container_width=True)
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Total Links", len(data_link))
             c2.metric("Total Length", f"{data_link.iloc[:,1].sum():.1f} km")
             c3.metric("Avg Speed", f"{data_link.iloc[:,3].mean():.1f} km/h")
             c4.metric("Avg Flow", f"{data_link.iloc[:,2].mean():.0f}")
-            
             c_g1, c_g2 = st.columns(2)
             with c_g1: st.plotly_chart(px.histogram(data_link, x='Speed', title="Speed Dist"), use_container_width=True)
             with c_g2: st.plotly_chart(px.histogram(data_link, x='Flow', title="Flow Dist"), use_container_width=True)
-        except Exception as e:
-            st.error(f"Error: {e}")
-    else:
-        st.info("Waiting for Link Data...")
+        except Exception as e: st.error(f"Error: {e}")
+    else: st.info("Waiting for Link Data...")
 
-# --- TAB 4: CALCULATE (Full) ---
 with tab4:
     st.header("⚙️ Calculate Emissions")
     ready = all([pc_param, ldv_param, hdv_param, moto_param, link_osm]) and all(prop_files.values())
-    if not ready:
-        st.warning("⚠️ Some files are missing.")
-    elif not selected_pollutants:
-        st.warning("⚠️ Select at least one pollutant.")
+    if not ready: st.warning("⚠️ Some files are missing.")
+    elif not selected_pollutants: st.warning("⚠️ Select at least one pollutant.")
     else:
         if st.button("🚀 Calculate Multi-Pollutant Emissions", type="primary", use_container_width=True):
             with st.spinner("Initializing Engine..."):
                 try:
                     import copert
                     cop = load_copert_instance(pc_param, ldv_param, hdv_param, moto_param)
-                    
                     link_osm.seek(0)
                     df_link = pd.read_csv(link_osm, sep=r'\s+', header=None, engine='python')
                     data_link = df_link.values
                     N_links = len(data_link)
-                    
-                    # Safe Loader
                     def load_safe(key):
                         f = prop_files[key]; f.seek(0)
                         arr = np.loadtxt(f)
@@ -329,12 +314,9 @@ with tab4:
                         if arr.shape[0] == N_links: return arr
                         elif arr.shape[0] == 1: return np.tile(arr, (N_links, 1))
                         else: return np.tile(arr, (int(np.ceil(N_links/arr.shape[0])), 1))[:N_links]
-
                     eng_cap_gas = load_safe('ecg'); eng_cap_dsl = load_safe('ecd')
                     cls_gas = load_safe('ccg'); cls_dsl = load_safe('ccd')
                     cls_2s = load_safe('2s'); cls_4s = load_safe('4s')
-
-                    # Extract
                     lengths = data_link[:, 1]; flows = data_link[:, 2]
                     speeds = np.clip(data_link[:, 3], 10.0, 130.0)
                     prop_gas = data_link[:, 4]; prop_pc = data_link[:, 5]
@@ -343,72 +325,52 @@ with tab4:
                     prop_dsl = 1.0 - prop_gas
                     prop_moto = np.maximum(0.0, 1.0 - (prop_pc + prop_ldv + prop_hdv))
                     prop_2s = 1.0 - prop_4s
-
                     emissions_db = {}
                     poll_map = {"CO": cop.pollutant_CO, "NOx": cop.pollutant_NOx, "PM": cop.pollutant_PM, 
                                 "VOC": cop.pollutant_VOC, "FC": cop.pollutant_FC, "CO2": cop.pollutant_FC}
-
                     prog = st.progress(0)
-                    
                     for idx, poll_name in enumerate(selected_pollutants):
                         p_const = poll_map.get(poll_name, cop.pollutant_CO)
                         t_pc = np.zeros(N_links); t_ldv = np.zeros(N_links); t_hdv = np.zeros(N_links); t_moto = np.zeros(N_links)
-                        
-                        # Calculation Logic (Vectorized)
                         pc_configs = [(0, prop_gas, eng_cap_gas), (1, prop_dsl, eng_cap_dsl)]
                         cop_classes = [cop.class_PRE_ECE, cop.class_ECE_15_00_or_01, cop.class_ECE_15_02, cop.class_ECE_15_03, cop.class_ECE_15_04, cop.class_Improved_Conventional, cop.class_Open_loop, cop.class_Euro_1, cop.class_Euro_2, cop.class_Euro_3, cop.class_Euro_4, cop.class_Euro_5, cop.class_Euro_6, cop.class_Euro_6c]
                         cap_indices = [cop.engine_capacity_0p8_to_1p4, cop.engine_capacity_1p4_to_2, cop.engine_capacity_more_2]
-
                         for eng_idx, eng_prop, cap_matrix in pc_configs:
                             for k, cap_id in enumerate(cap_indices):
                                 if k >= cap_matrix.shape[1]: continue
                                 for c_idx, cls_val in enumerate(cop_classes):
                                     if c_idx >= cls_gas.shape[1]: continue
                                     if eng_idx == 1 and k == 0 and cls_val <= cop.class_Euro_3: continue 
-                                    
                                     ef = cop.HEFGasolinePassengerCar(p_const, speeds, cls_val, cap_id) if eng_idx == 0 else cop.HEFDieselPassengerCar(p_const, speeds, cls_val, cap_id)
                                     class_matrix = cls_gas if eng_idx == 0 else cls_dsl
-                                    
                                     t_pc += ef * eng_prop * cap_matrix[:, k] * class_matrix[:, c_idx]
                                     ef_ldv = cop.HEFLightCommercialVehicle(p_const, speeds, cop.engine_type_gasoline if eng_idx==0 else cop.engine_type_diesel, cls_val)
                                     t_ldv += ef_ldv * eng_prop * class_matrix[:, c_idx]
-
                         hdv_stds = [cop.class_hdv_Euro_I, cop.class_hdv_Euro_II, cop.class_hdv_Euro_III, cop.class_hdv_Euro_IV, cop.class_hdv_Euro_V, cop.class_hdv_Euro_VI]
                         for h in hdv_stds:
                             ef_h = cop.HEFHeavyDutyVehicle(p_const, speeds, 0, 0, h)
                             t_hdv += ef_h * (1.0/len(hdv_stds))
-
                         m_types = [cop.engine_type_moto_two_stroke_more_50, cop.engine_type_moto_four_stroke_50_250]
                         m_classes = [cop.class_moto_Conventional, cop.class_moto_Euro_1, cop.class_moto_Euro_2, cop.class_moto_Euro_3, cop.class_moto_Euro_4, cop.class_moto_Euro_5]
                         m_mats = [cls_2s, cls_4s]; m_props_arr = [prop_2s, prop_4s]
-                        
                         for i, mt in enumerate(m_types):
                             for c_idx, cls in enumerate(m_classes):
                                 if c_idx >= m_mats[i].shape[1]: continue
                                 ef_m = cop.EFMotorcycle(p_const, speeds, mt, cls)
                                 t_moto += ef_m * m_props_arr[i] * m_mats[i][:, c_idx]
-
                         t_pc *= prop_pc * flows; t_ldv *= prop_ldv * flows
                         t_hdv *= prop_hdv * flows; t_moto *= prop_moto * flows
                         total = t_pc + t_ldv + t_hdv + t_moto
-                        
                         if poll_name == "CO2": 
                             factor = (prop_gas * 2392 + prop_dsl * 2640) * 0.01 
                             total *= factor; t_pc *= factor; t_ldv *= factor; t_hdv *= 2640 * 0.01; t_moto *= 2392 * 0.01
-
                         emissions_db[poll_name] = {'pc': t_pc, 'ldv': t_ldv, 'hdv': t_hdv, 'moto': t_moto, 'total': total}
                         prog.progress((idx + 1) / len(selected_pollutants))
-
                     st.session_state.emissions_db = emissions_db
                     st.session_state.data_link = data_link
                     st.success("✅ Calculations Complete!")
-                    
-                except Exception as e:
-                    st.error(f"Calc Error: {e}")
-                    import traceback
-                    st.code(traceback.format_exc())
+                except Exception as e: st.error(f"Calc Error: {e}")
 
-# --- TAB 5: ANALYSIS ---
 with tab5:
     st.header("📈 Multi-Metric Analysis")
     if 'emissions_db' in st.session_state:
@@ -416,18 +378,12 @@ with tab5:
         with c1:
             p_view = st.selectbox("Select Pollutant to Analyze", selected_pollutants)
             db = st.session_state.emissions_db[p_view]
-            df_v = pd.DataFrame({
-                'Vehicle': ['PC', 'LDV', 'HDV', 'Moto'],
-                'Emission': [db['pc'].sum(), db['ldv'].sum(), db['hdv'].sum(), db['moto'].sum()]
-            })
+            df_v = pd.DataFrame({'Vehicle': ['PC', 'LDV', 'HDV', 'Moto'], 'Emission': [db['pc'].sum(), db['ldv'].sum(), db['hdv'].sum(), db['moto'].sum()]})
             st.plotly_chart(px.pie(df_v, values='Emission', names='Vehicle', title=f"{p_view} by Vehicle Type", hole=0.4), use_container_width=True)
-        with c2:
-            st.markdown(f"**Total {p_view}:** {db['total'].sum():,.2f}")
-            st.dataframe(df_v, hide_index=True)
-    else:
-        st.info("Calculate first.")
+        with c2: st.dataframe(df_v, hide_index=True)
+    else: st.info("Calculate first.")
 
-# --- TAB 6: INTERACTIVE MAP (OPTIMIZED WITH STATE FILTER) ---
+# --- TAB 6: INTERACTIVE MAP (VERTICAL LEGEND) ---
 with tab6:
     st.header("🗺️ Interactive Map")
     if 'emissions_db' not in st.session_state:
@@ -435,7 +391,6 @@ with tab6:
     elif osm_file is None:
         st.warning("⚠️ OSM Network file missing.")
     else:
-        # 1. LOAD GEOMETRY
         if 'map_geo_gdf' not in st.session_state:
             with st.spinner("Loading Map Geometry (One-time setup)..."):
                 try:
@@ -443,107 +398,74 @@ with tab6:
                     with tempfile.NamedTemporaryFile(delete=False, suffix='.gpkg') as tmp:
                         tmp.write(osm_file.read())
                         tmp_path = tmp.name
-                    
-                    try:
-                        gdf = gpd.read_file(tmp_path)
+                    try: gdf = gpd.read_file(tmp_path)
                     except:
-                        # Fallback for OSM XML
                         coords, ids, names, types = parse_osm_network_cached(osm_file, x_min, x_max, y_min, y_max, tolerance, ncore)
                         from shapely.geometry import LineString
                         rows = [{'osm_id': int(oid), 'name': name, 'geometry': LineString(path)} for path, oid, name in zip(coords, ids, names) if len(path) > 1]
                         gdf = gpd.GeoDataFrame(rows, crs="EPSG:4326")
-
-                    # Column Standardization
                     if 'osm_id' in gdf.columns: gdf['osm_id'] = pd.to_numeric(gdf['osm_id'], errors='coerce').fillna(0).astype(int)
                     elif 'id' in gdf.columns: gdf['osm_id'] = pd.to_numeric(gdf['id'], errors='coerce').fillna(0).astype(int)
-                    
                     if gdf.crs and gdf.crs.to_epsg() != 4326: gdf = gdf.to_crs(epsg=4326)
-                        
                     st.session_state.map_geo_gdf = gdf
                     os.unlink(tmp_path)
-                except Exception as e:
-                    st.error(f"Map Prep Error: {e}"); st.stop()
+                except Exception as e: st.error(f"Map Prep Error: {e}"); st.stop()
 
-        # 2. CONTROLS
         c1, c2, c3, c4 = st.columns(4)
         with c1: view_poll = st.selectbox("Pollutant", selected_pollutants)
         with c2: lw = st.slider("Line Width", 1, 50, 15)
         with c3: pitch = st.slider("3D Pitch", 0, 60, 45)
         with c4: f_speed = st.slider("Min Speed Filter", 0, 130, 0)
 
-        # 3. MERGE & FILTER (State Aware)
         with st.spinner(f"Rendering {selected_state}..."):
             db_vals = st.session_state.emissions_db[view_poll]['total']
             d_link = st.session_state.data_link
-            
             df_emissions = pd.DataFrame({'osm_id': d_link[:, 0].astype(int), 'emission': db_vals, 'speed': d_link[:, 3]})
             df_emissions = df_emissions[df_emissions['speed'] >= f_speed]
-            
             gdf_map = st.session_state.map_geo_gdf
-            
-            # --- CRITICAL: FILTER GDF BY SELECTED STATE BOUNDS ---
-            if selected_state != "All Nigeria":
-                gdf_map = gdf_map.cx[x_min:x_max, y_min:y_max]
-            
+            if selected_state != "All Nigeria": gdf_map = gdf_map.cx[x_min:x_max, y_min:y_max]
             merged_gdf = gdf_map.merge(df_emissions, on='osm_id', how='inner')
             match_count = len(merged_gdf)
             
             if match_count == 0:
-                st.warning(f"No matched roads found in **{selected_state}**. Ensure your Link Data IDs match the Map File IDs.")
+                st.warning(f"No matched roads found in **{selected_state}**.")
             else:
                 st.success(f"✅ Visualizing {match_count} roads in {selected_state}.")
-                
-                # Colors
                 max_val = merged_gdf['emission'].max()
                 norm = mcolors.Normalize(vmin=0, vmax=max_val)
                 cmap = cm.get_cmap("Reds")
                 merged_gdf['color'] = merged_gdf['emission'].apply(lambda val: [int(c*255) for c in cmap(norm(val))[:3]])
-                
                 geojson_data = getattr(merged_gdf, "__geo_interface__", None) or merged_gdf.to_json()
-
-                layer = pdk.Layer(
-                    type="GeoJsonLayer",
-                    data=geojson_data,
-                    pickable=True,
-                    stroked=True,
-                    filled=False,
-                    get_line_color="properties.color",
-                    get_line_width=lw,
-                    line_width_min_pixels=1,
-                    opacity=0.9
-                )
-                
-                # Auto-Center based on Filtered Geometry
+                layer = pdk.Layer(type="GeoJsonLayer", data=geojson_data, pickable=True, stroked=True, filled=False, get_line_color="properties.color", get_line_width=lw, line_width_min_pixels=1, opacity=0.9)
                 minx, miny, maxx, maxy = merged_gdf.total_bounds
-                view_state = pdk.ViewState(latitude=(miny+maxy)/2, longitude=(minx+maxx)/2, zoom=8 if selected_state == "All Nigeria" else 10, pitch=pitch)
-                
+                view_state = pdk.ViewState(latitude=(miny+maxy)/2, longitude=(minx+maxx)/2, zoom=10, pitch=pitch)
                 deck = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"html": "<b>ID:</b> {osm_id}<br/><b>Emission:</b> {emission:.2f} g/km"}, map_style="mapbox://styles/mapbox/light-v9")
-                st.pydeck_chart(deck)
                 
-                fig, ax = plt.subplots(figsize=(6, 0.5))
-                matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='horizontal')
-                st.caption(f"Legend: 0 to {max_val:.2f} g/km"); st.pyplot(fig)
+                # --- LAYOUT: MAP (Left) + LEGEND (Right) ---
+                col_map, col_legend = st.columns([6, 1])
+                with col_map:
+                    st.pydeck_chart(deck)
+                with col_legend:
+                    st.caption("g/km")
+                    fig, ax = plt.subplots(figsize=(1, 6))
+                    matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='vertical')
+                    st.pyplot(fig, use_container_width=True)
 
-# --- TAB 7: DOWNLOAD ---
 with tab7:
     st.header("📥 Download Results")
     if 'emissions_db' in st.session_state:
         d_link = st.session_state.data_link
         df_out = pd.DataFrame(d_link[:, :4], columns=['OSM_ID', 'Length', 'Flow', 'Speed'])
         u_opts = st.session_state.get('selected_units', {})
-        
         for p in selected_pollutants:
             val = st.session_state.emissions_db[p]['total']
             unit = u_opts.get(p, pollutants_available[p]['unit'])
             factor = unit_conversion_options.get(p, {}).get(unit, {}).get('factor', 1.0)
             df_out[f'{p}_Total ({unit})'] = val * factor
-            
         csv = df_out.to_csv(index=False).encode('utf-8')
         st.download_button("Download CSV", csv, "emissions_results.csv", "text/csv")
-    else:
-        st.info("Calculate first.")
+    else: st.info("Calculate first.")
 
-# ==================== FOOTER ====================
 st.sidebar.markdown("---")
 st.sidebar.markdown("""
 1. Upload all COPERT parameter files
