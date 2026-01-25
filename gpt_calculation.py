@@ -2,9 +2,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import requests
-import pydeck as pdk
 import matplotlib
-import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import plotly.express as px
@@ -15,6 +13,7 @@ import zipfile
 import tempfile
 import os
 import geopandas as gpd
+from shapely.geometry import LineString, MultiLineString
 
 # ==================== CONFIGURATION ====================
 st.set_page_config(page_title="Advanced Traffic Emission Calculator", layout="wide", initial_sidebar_state="expanded")
@@ -79,10 +78,10 @@ st.markdown("""
     .stAlert {
         background-color: #e7f3ff;
     }
-    /* Make map container nicer */
-    .stDeckGlJsonChart {
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    /* Map Container Style */
+    .stPlotlyChart {
         border-radius: 8px;
+        overflow: hidden;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -97,7 +96,6 @@ st.markdown("---")
 def fetch_default_file(filename):
     """Fetches a default file from GitHub."""
     try:
-        # Handle GPKG vs OSM extension
         if filename.endswith(".gpkg"):
              url = GITHUB_BASE_URL + filename
              r = requests.get(url, timeout=15)
@@ -387,7 +385,7 @@ with tab5:
         with c2: st.dataframe(df_v, hide_index=True)
     else: st.info("Calculate first.")
 
-# --- TAB 6: INTERACTIVE MAP (POWER BI STYLE) ---
+# --- TAB 6: INTERACTIVE MAP (PLOTLY EXPRESS - FINAL FIX) ---
 with tab6:
     st.header("🗺️ Interactive Map")
     if 'emissions_db' not in st.session_state:
@@ -397,7 +395,7 @@ with tab6:
     else:
         # Load Geometry
         if 'map_geo_gdf' not in st.session_state:
-            with st.spinner("Loading Map Geometry (One-time setup)..."):
+            with st.spinner("Loading Map Geometry..."):
                 try:
                     osm_file.seek(0)
                     with tempfile.NamedTemporaryFile(delete=False, suffix='.gpkg') as tmp:
@@ -407,34 +405,32 @@ with tab6:
                     except:
                         coords, ids, names, types = parse_osm_network_cached(osm_file, x_min, x_max, y_min, y_max, tolerance, ncore)
                         from shapely.geometry import LineString
-                        rows = [{'osm_id': int(oid), 'name': name, 'geometry': LineString(path)} for path, oid, name in zip(coords, ids, names) if len(path) > 1]
+                        rows = [{'osm_id': int(oid), 'name': str(name), 'geometry': LineString(path)} for path, oid, name in zip(coords, ids, names) if len(path) > 1]
                         gdf = gpd.GeoDataFrame(rows, crs="EPSG:4326")
-                    if 'osm_id' in gdf.columns: gdf['osm_id'] = pd.to_numeric(gdf['osm_id'], errors='coerce').fillna(0).astype(int)
-                    elif 'id' in gdf.columns: gdf['osm_id'] = pd.to_numeric(gdf['id'], errors='coerce').fillna(0).astype(int)
+
+                    # FORCE TYPE CONVERSION (Fixes TypeError)
+                    if 'osm_id' in gdf.columns: 
+                        gdf['osm_id'] = pd.to_numeric(gdf['osm_id'], errors='coerce').fillna(0).astype(int)
+                    elif 'id' in gdf.columns: 
+                        gdf['osm_id'] = pd.to_numeric(gdf['id'], errors='coerce').fillna(0).astype(int)
+                    
+                    # Ensure Name is String
+                    if 'name' not in gdf.columns: gdf['name'] = "Unknown"
+                    gdf['name'] = gdf['name'].fillna("Unknown").astype(str)
+
                     if gdf.crs and gdf.crs.to_epsg() != 4326: gdf = gdf.to_crs(epsg=4326)
                     st.session_state.map_geo_gdf = gdf
                     os.unlink(tmp_path)
                 except Exception as e: st.error(f"Map Prep Error: {e}"); st.stop()
 
-        # Dashboard Controls (Power BI Style Header)
-        with st.expander("Map & Visual Controls", expanded=True):
+        # Controls
+        with st.expander("Map Controls", expanded=True):
             c1, c2, c3, c4 = st.columns(4)
             with c1: view_poll = st.selectbox("Pollutant", selected_pollutants)
             with c2: 
-                # Map Style Dropdown
-                map_style_name = st.selectbox("Base Map", ["Light", "Dark", "Satellite", "Streets", "Outdoors"])
-                map_styles = {
-                    "Light": "mapbox://styles/mapbox/light-v9", 
-                    "Dark": "mapbox://styles/mapbox/dark-v9", 
-                    "Satellite": "mapbox://styles/mapbox/satellite-v9", 
-                    "Streets": "mapbox://styles/mapbox/streets-v11", 
-                    "Outdoors": "mapbox://styles/mapbox/outdoors-v11"
-                }
+                map_style = st.selectbox("Base Map", ["open-street-map", "carto-positron", "carto-darkmatter", "white-bg"])
             with c3:
-                # Safe Colormap mapping
-                cmap_name = st.selectbox("Color Palette", ["Reds", "Plasma", "Inferno", "Viridis", "Jet"])
-                cmap_key_map = {"Reds": "Reds", "Plasma": "plasma", "Inferno": "inferno", "Viridis": "viridis", "Jet": "jet"}
-                selected_cmap = cmap_key_map[cmap_name]
+                colorscale_name = st.selectbox("Color Palette", ["Reds", "Plasma", "Inferno", "Viridis", "Jet"])
             with c4: f_speed = st.slider("Min Speed Filter", 0, 130, 0)
 
         with st.spinner(f"Rendering {selected_state}..."):
@@ -446,43 +442,59 @@ with tab6:
             if selected_state != "All Nigeria": gdf_map = gdf_map.cx[x_min:x_max, y_min:y_max]
             
             merged_gdf = gdf_map.merge(df_emissions, on='osm_id', how='inner')
-            match_count = len(merged_gdf)
             
-            if match_count == 0:
+            if len(merged_gdf) == 0:
                 st.warning(f"No matched roads found in **{selected_state}**.")
             else:
-                st.success(f"✅ Visualizing {match_count} roads in {selected_state}.")
-                max_val = merged_gdf['emission'].max()
+                st.success(f"✅ Visualizing {len(merged_gdf)} roads.")
                 
-                # Fixed: Use matplotlib.colormaps for safety
-                try:
-                    cmap = matplotlib.colormaps[selected_cmap]
-                except:
-                    cmap = matplotlib.colormaps['Reds'] # Fallback
+                # --- COORDINATE EXTRACTION (Fixes TypeError in px.line_mapbox) ---
+                # We essentially "explode" the geometry into a simple lat/lon dataframe
+                # This removes any GeoPandas complexity that Plotly might choke on
+                
+                plot_data = []
+                # Limit for performance if full country
+                display_gdf = merged_gdf if len(merged_gdf) < 10000 else merged_gdf.sort_values('emission', ascending=False).head(10000)
+                
+                for _, row in display_gdf.iterrows():
+                    gid = str(row['osm_id']) # ID must be string for grouping
+                    val = float(row['emission']) # Val must be float
+                    nm = str(row['name'])
                     
-                norm = mcolors.Normalize(vmin=0, vmax=max_val)
-                merged_gdf['color'] = merged_gdf['emission'].apply(lambda val: [int(c*255) for c in cmap(norm(val))[:3]])
+                    geoms = []
+                    if row.geometry.geom_type == 'LineString': geoms = [row.geometry]
+                    elif row.geometry.geom_type == 'MultiLineString': geoms = list(row.geometry.geoms)
+                    
+                    for line in geoms:
+                        coords = list(line.coords)
+                        lons, lats = zip(*coords)
+                        for ln, lt in zip(lons, lats):
+                            plot_data.append({'osm_id': gid, 'lat': lt, 'lon': ln, 'emission': val, 'name': nm})
                 
-                geojson_data = getattr(merged_gdf, "__geo_interface__", None) or merged_gdf.to_json()
+                df_plot = pd.DataFrame(plot_data)
                 
-                layer = pdk.Layer(type="GeoJsonLayer", data=geojson_data, pickable=True, stroked=True, filled=False, get_line_color="properties.color", get_line_width=15, line_width_min_pixels=1, opacity=0.9)
-                minx, miny, maxx, maxy = merged_gdf.total_bounds
-                view_state = pdk.ViewState(latitude=(miny+maxy)/2, longitude=(minx+maxx)/2, zoom=10, pitch=45)
-                
-                deck = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"html": "<b>ID:</b> {osm_id}<br/><b>Emission:</b> {emission:.2f} g/km"}, map_style=map_styles[map_style_name])
-                
-                # Power BI Style Layout
-                st.pydeck_chart(deck)
-                
-                # Horizontal Legend Below Map
-                st.markdown("---")
-                col_L1, col_L2 = st.columns([1, 10])
-                with col_L1: st.write(f"**{view_poll} (g/km)**")
-                with col_L2:
-                    # Slim, Horizontal Colorbar
-                    fig, ax = plt.subplots(figsize=(10, 0.3)) 
-                    matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='horizontal')
-                    st.pyplot(fig, use_container_width=True)
+                if not df_plot.empty:
+                    fig = px.line_mapbox(
+                        df_plot, lat="lat", lon="lon", color="emission",
+                        line_group="osm_id", hover_name="name",
+                        hover_data={"emission": ":.2f", "lat": False, "lon": False, "osm_id": True},
+                        color_continuous_scale=colorscale_name,
+                        zoom=10 if selected_state != "All Nigeria" else 6,
+                        mapbox_style=map_style
+                    )
+                    fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0}, height=600)
+                    # Move legend inside map to look like ArcGIS
+                    fig.update_layout(coloraxis_colorbar=dict(
+                        title=f"{view_poll} (g/km)",
+                        thicknessmode="pixels", thickness=15,
+                        lenmode="fraction", len=0.3,
+                        yanchor="bottom", y=0.05,
+                        xanchor="right", x=0.95,
+                        bgcolor="rgba(255,255,255,0.8)"
+                    ))
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.error("Error processing map coordinates.")
 
 with tab7:
     st.header("📥 Download Results")
