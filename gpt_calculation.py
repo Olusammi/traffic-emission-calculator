@@ -443,7 +443,7 @@ with tab5:
     else:
         st.info("Calculate first.")
 
-# --- TAB 6: INTERACTIVE MAP (DIAGNOSTIC MODE) ---
+# --- TAB 6: INTERACTIVE MAP (ULTRA-FAST MERGE) ---
 with tab6:
     st.header("🗺️ Interactive Map")
     
@@ -452,154 +452,156 @@ with tab6:
     elif osm_file is None:
         st.warning("⚠️ OSM Network file missing.")
     else:
-        # 1. Geometry Prep (Cached)
-        if 'map_geo' not in st.session_state and 'map_geo_gdf' not in st.session_state:
-            with st.spinner("Preparing Map Geometry..."):
+        # 1. LOAD GEOMETRY (Cached)
+        if 'map_geo_gdf' not in st.session_state:
+            with st.spinner("Loading Map Geometry (One-time setup)..."):
                 try:
                     osm_file.seek(0)
-                    filename = "default.gpkg"
-                    if hasattr(osm_file, 'name'): filename = osm_file.name
-                    elif 'osm' in DEFAULT_FILES_MAP: filename = DEFAULT_FILES_MAP['osm']
-
-                    if filename.endswith('.gpkg'):
-                        gdf = gpd.read_file(osm_file)
-                        if gdf.crs and gdf.crs.to_epsg() != 4326: gdf = gdf.to_crs(epsg=4326)
-                        st.session_state.map_geo_gdf = gdf
-                    else:
+                    # Force use of Geopandas for everything (Faster for large datasets)
+                    # Create a temporary file to allow Geopandas to read it
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.gpkg') as tmp:
+                        tmp.write(osm_file.read())
+                        tmp_path = tmp.name
+                    
+                    # Read file (Supports GPKG, SHP, GeoJSON)
+                    # If it's XML .osm, we might need the parser, but for speed we prefer GPKG
+                    try:
+                        gdf = gpd.read_file(tmp_path)
+                    except:
+                        # Fallback for .osm XML files (slower but necessary if that's what you have)
                         coords, ids, names, types = parse_osm_network_cached(
                             osm_file, x_min, x_max, y_min, y_max, tolerance, ncore
                         )
-                        st.session_state.map_geo = (coords, ids, names, types)
+                        # Convert to GDF immediately for fast merging later
+                        from shapely.geometry import LineString
+                        rows = []
+                        for i, (path, oid, name) in enumerate(zip(coords, ids, names)):
+                            if len(path) > 1:
+                                rows.append({'osm_id': int(oid), 'name': name, 'geometry': LineString(path)})
+                        gdf = gpd.GeoDataFrame(rows, crs="EPSG:4326")
+
+                    # Ensure standard column name and type for merging
+                    if 'osm_id' in gdf.columns:
+                        gdf['osm_id'] = pd.to_numeric(gdf['osm_id'], errors='coerce').fillna(0).astype(int)
+                    elif 'id' in gdf.columns:
+                        gdf['osm_id'] = pd.to_numeric(gdf['id'], errors='coerce').fillna(0).astype(int)
+                    
+                    # Ensure Lat/Lon CRS
+                    if gdf.crs and gdf.crs.to_epsg() != 4326:
+                        gdf = gdf.to_crs(epsg=4326)
+                        
+                    st.session_state.map_geo_gdf = gdf
+                    os.unlink(tmp_path)
+                    
                 except Exception as e:
                     st.error(f"Map Prep Error: {e}")
                     st.stop()
 
-        # 2. Controls
+        # 2. CONTROLS
         c1, c2, c3, c4 = st.columns(4)
         with c1: view_poll = st.selectbox("Pollutant", selected_pollutants)
         with c2: lw = st.slider("Line Width", 1, 50, 15)
         with c3: pitch = st.slider("3D Pitch", 0, 60, 45)
-        
-        # --- FIXED SPEED FILTER ---
-        # Default to 0 to ensure your 60km/h data always shows
         with c4: 
+            # Show "All Data" by default since you said it's all 60km/h
             f_speed = st.slider("Min Speed Filter", 0, 130, 0)
 
-        # 3. Data Processing
-        db = st.session_state.emissions_db[view_poll]['total']
-        d_link = st.session_state.data_link
-        
-        # 3a. Pre-filter Data
-        mask = d_link[:, 3] >= f_speed
-        
-        # Optimization: Cap at 20k to prevent crash, but show warning
-        if np.sum(mask) > 20000:
-            st.toast(f"⚠️ High data volume: {np.sum(mask)} links. Rendering top 20,000.", icon="🔥")
-            valid_indices = np.where(mask)[0]
-            # Prioritize high emissions
-            emissions_filtered = db[valid_indices]
-            top_indexes_local = np.argsort(emissions_filtered)[-20000:]
-            final_indices = valid_indices[top_indexes_local]
-            mask = np.zeros(len(d_link), dtype=bool)
-            mask[final_indices] = True
-
-        filtered_ids = d_link[mask, 0].astype(int)
-        filtered_vals = db[mask]
-        lookup = dict(zip(filtered_ids, filtered_vals))
-        
-        st.caption(f"🔍 **Diagnostics:** {len(filtered_vals)} links passed speed filter. Matching with Map Geometry...")
-
-        map_data = []
-        
-        if len(filtered_vals) == 0:
-            st.error(f"No links found with speed >= {f_speed} km/h.")
-            max_val = 1.0
-        else:
-            max_val = np.max(filtered_vals)
+        # 3. FAST DATA MERGE (The Fix)
+        with st.spinner("Matching Data..."):
+            # Get Emission Data
+            db_vals = st.session_state.emissions_db[view_poll]['total']
+            d_link = st.session_state.data_link
             
-        norm = mcolors.Normalize(vmin=0, vmax=max_val)
-        cmap = cm.get_cmap("Reds") 
-
-        # 4. Geometry Match
-        with st.spinner("Matching Data to Map..."):
-            if 'map_geo_gdf' in st.session_state:
-                # GPKG Fast Path
-                gdf = st.session_state.map_geo_gdf
-                
-                # Check match rate
-                map_ids = set(gdf['osm_id'].astype(int))
-                data_ids = set(lookup.keys())
-                common = map_ids.intersection(data_ids)
-                
-                if len(common) == 0:
-                    st.error(f"❌ **ID Mismatch Error**: Your Link Data has {len(data_ids)} IDs, and the Map has {len(map_ids)} IDs, but **0** match.")
-                    st.info("💡 **Fix:** Ensure the 'OSM_ID' in your `.dat` file matches the `osm_id` in your `.gpkg` file.")
-                    st.stop()
-                
-                # Filter GDF
-                subset = gdf[gdf['osm_id'].astype(int).isin(common)]
-                
-                for _, row in subset.iterrows():
-                    oid = int(row['osm_id'])
-                    val = lookup[oid]
-                    color = [int(c*255) for c in cmap(norm(val))[:3]]
-                    
-                    if row.geometry.geom_type == 'LineString':
-                        map_data.append({"path": list(row.geometry.coords), "emission": val, "color": color, "name": str(oid)})
-                    elif row.geometry.geom_type == 'MultiLineString':
-                        for line in row.geometry.geoms:
-                            map_data.append({"path": list(line.coords), "emission": val, "color": color, "name": str(oid)})
+            # Create a clean DataFrame for merging
+            df_emissions = pd.DataFrame({
+                'osm_id': d_link[:, 0].astype(int),
+                'emission': db_vals,
+                'speed': d_link[:, 3]
+            })
             
-            elif 'map_geo' in st.session_state:
-                # OSM Fast Path
-                coords, ids, names, types = st.session_state.map_geo
-                match_count = 0
-                for r, oid, name in zip(coords, ids, names):
-                    if oid in lookup:
-                        match_count += 1
-                        val = lookup[oid]
-                        color = [int(c*255) for c in cmap(norm(val))[:3]]
-                        map_data.append({"path": r, "emission": val, "color": color, "name": name})
-                
-                if match_count == 0:
-                    st.error(f"❌ **ID Mismatch**: Checked {len(ids)} map roads against {len(lookup)} data links. 0 Matches.")
-                    st.stop()
-
-        if not map_data:
-            st.warning("No visual data generated.")
-        else:
-            # 5. Render PyDeck
-            layer = pdk.Layer(
-                type="PathLayer",
-                data=map_data,
-                pickable=True,
-                get_color="color",
-                width_scale=1,
-                width_min_pixels=1,
-                get_path="path",
-                get_width=lw,
-                opacity=0.9
-            )
+            # Apply Speed Filter on Data Side first
+            df_emissions = df_emissions[df_emissions['speed'] >= f_speed]
             
-            if len(map_data) > 0:
-                mid_idx = len(map_data) // 2
-                start = map_data[mid_idx]['path'][0]
-                view_state = pdk.ViewState(latitude=start[1], longitude=start[0], zoom=10, pitch=pitch)
+            # Get Map Geometry
+            gdf_map = st.session_state.map_geo_gdf
+            
+            # === VECTORIZED MERGE (Instant) ===
+            # Inner join: drops map segments that have no emissions data
+            # and drops emission data that has no map segment
+            merged_gdf = gdf_map.merge(df_emissions, on='osm_id', how='inner')
+            
+            match_count = len(merged_gdf)
+            
+            if match_count == 0:
+                st.error("No matches found! The OSM IDs in your Link Data do not match the OSM IDs in your Map File.")
+                st.write("First 5 Link Data IDs:", df_emissions['osm_id'].head().tolist())
+                st.write("First 5 Map File IDs:", gdf_map['osm_id'].head().tolist())
+                st.stop()
             else:
-                view_state = pdk.ViewState(latitude=9.0, longitude=7.0, zoom=6, pitch=pitch)
-            
-            deck = pdk.Deck(
-                layers=[layer],
-                initial_view_state=view_state,
-                tooltip={"html": "<b>{name}</b><br/>{emission:.2f} g/km", "style": {"backgroundColor": "steelblue", "color": "white"}},
-                map_style="mapbox://styles/mapbox/light-v9"
-            )
-            st.pydeck_chart(deck)
-            
-            st.caption(f"Legend: 0 to {max_val:.2f} g/km")
-            fig, ax = plt.subplots(figsize=(6, 0.5))
-            matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='horizontal')
-            st.pyplot(fig)
+                st.success(f"✅ Successfully matched {match_count} road segments.")
+
+        # 4. COLORING & RENDERING
+        # Normalize colors
+        max_val = merged_gdf['emission'].max()
+        norm = mcolors.Normalize(vmin=0, vmax=max_val)
+        cmap = cm.get_cmap("Reds")
+        
+        # Vectorized Color Calculation (Fast)
+        # Apply colormap to entire column at once
+        def get_color(val):
+            rgba = cmap(norm(val))
+            return [int(c*255) for c in rgba[:3]]
+        
+        merged_gdf['color'] = merged_gdf['emission'].apply(get_color)
+        
+        # Prepare geometry for PyDeck (Extract coordinates)
+        # PyDeck handles LineString/MultiLineString via the GeoJsonLayer, but PathLayer needs explicit coords
+        # Let's use GeoJsonLayer for handling 'MultiLineString' correctly without complex parsing
+        
+        # Convert to GeoJSON format (PyDeck consumes this natively and fast)
+        geojson_data = getattr(merged_gdf, "__geo_interface__", None) or merged_gdf.to_json()
+
+        # 5. RENDER PYDECK
+        layer = pdk.Layer(
+            type="GeoJsonLayer",
+            data=geojson_data,
+            pickable=True,
+            stroked=True,
+            filled=False,
+            get_line_color="properties.color", # Read from the properties we merged
+            get_line_width=lw,
+            line_width_min_pixels=1,
+            opacity=0.9
+        )
+        
+        # Auto-Center
+        # Calculate bounds roughly
+        minx, miny, maxx, maxy = merged_gdf.total_bounds
+        mid_x, mid_y = (minx + maxx)/2, (miny + maxy)/2
+        
+        view_state = pdk.ViewState(
+            latitude=mid_y, 
+            longitude=mid_x, 
+            zoom=6 if match_count > 1000 else 11, 
+            pitch=pitch
+        )
+        
+        deck = pdk.Deck(
+            layers=[layer],
+            initial_view_state=view_state,
+            tooltip={
+                "html": "<b>ID:</b> {osm_id}<br/><b>Emission:</b> {emission} g/km",
+                "style": {"backgroundColor": "steelblue", "color": "white"}
+            },
+            map_style="mapbox://styles/mapbox/light-v9"
+        )
+        st.pydeck_chart(deck)
+        
+        # Legend
+        st.caption(f"Legend: 0 to {max_val:.2f} g/km")
+        fig, ax = plt.subplots(figsize=(6, 0.5))
+        matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='horizontal')
+        st.pyplot(fig)
             
 # --- TAB 7: DOWNLOAD (Preserved) ---
 with tab7:
