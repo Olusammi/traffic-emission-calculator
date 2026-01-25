@@ -443,7 +443,7 @@ with tab5:
     else:
         st.info("Calculate first.")
 
-# --- TAB 6: INTERACTIVE MAP (PYDECK - FIXED) ---
+# --- TAB 6: INTERACTIVE MAP (PERFORMANCE OPTIMIZED) ---
 with tab6:
     st.header("🗺️ Interactive Map")
     
@@ -452,37 +452,24 @@ with tab6:
     elif osm_file is None:
         st.warning("⚠️ OSM Network file missing.")
     else:
-        # 1. Geometry Prep
-        if 'map_geo' not in st.session_state:
+        # 1. Geometry Prep (Cached)
+        if 'map_geo' not in st.session_state and 'map_geo_gdf' not in st.session_state:
             with st.spinner("Preparing Map Geometry..."):
                 try:
                     osm_file.seek(0)
-                    
-                    # DETECT FILE TYPE
-                    # If uploaded, use .name. If default (BytesIO), check config.
-                    filename = "default.gpkg" 
-                    if hasattr(osm_file, 'name'):
-                        filename = osm_file.name
-                    elif 'osm' in DEFAULT_FILES_MAP:
-                        filename = DEFAULT_FILES_MAP['osm']
+                    filename = "default.gpkg"
+                    if hasattr(osm_file, 'name'): filename = osm_file.name
+                    elif 'osm' in DEFAULT_FILES_MAP: filename = DEFAULT_FILES_MAP['osm']
 
-                    # BRANCH LOGIC: GPKG vs OSM
                     if filename.endswith('.gpkg'):
-                        # GPKG MODE (Geopandas)
                         gdf = gpd.read_file(osm_file)
-                        if gdf.crs and gdf.crs.to_epsg() != 4326:
-                            gdf = gdf.to_crs(epsg=4326)
+                        if gdf.crs and gdf.crs.to_epsg() != 4326: gdf = gdf.to_crs(epsg=4326)
                         st.session_state.map_geo_gdf = gdf
-                        if 'map_geo' in st.session_state: del st.session_state.map_geo
-                        
                     else:
-                        # OSM MODE (Osmium)
                         coords, ids, names, types = parse_osm_network_cached(
                             osm_file, x_min, x_max, y_min, y_max, tolerance, ncore
                         )
                         st.session_state.map_geo = (coords, ids, names, types)
-                        if 'map_geo_gdf' in st.session_state: del st.session_state.map_geo_gdf
-                        
                 except Exception as e:
                     st.error(f"Map Prep Error: {e}")
                     st.stop()
@@ -492,52 +479,84 @@ with tab6:
         with c1: view_poll = st.selectbox("Pollutant", selected_pollutants)
         with c2: lw = st.slider("Line Width", 1, 50, 15)
         with c3: pitch = st.slider("3D Pitch", 0, 60, 45)
-        with c4: f_speed = st.slider("Min Speed Filter", 0, 100, 0)
-
-        # 3. Prepare Data
-        db = st.session_state.emissions_db[view_poll]['total']
-        d_link = st.session_state.data_link
         
-        # Filter Logic (Speed)
+        # --- SMART SPEED FILTER ---
+        # If dataset is huge (Nigeria scale), default to 50km/h+ to prevent crash
+        d_link = st.session_state.data_link
+        total_links = len(d_link)
+        default_speed = 50 if total_links > 20000 else 0
+        
+        with c4: 
+            f_speed = st.slider("Min Speed Filter", 0, 100, default_speed, help="Higher filter = Faster map. For whole country, use >50km/h.")
+
+        # 3. Data Processing (Optimized)
+        db = st.session_state.emissions_db[view_poll]['total']
+        
+        # 3a. Pre-filter Data using Numpy (Fast)
         mask = d_link[:, 3] >= f_speed
+        
+        # If still too many, force cap to top 50k emitters
+        if np.sum(mask) > 50000:
+            st.warning(f"⚠️ Displaying top 50,000 segments (out of {np.sum(mask)}) to prevent browser freeze. Increase 'Min Speed Filter' to see specific highways.")
+            # Get indices of top 50k emitters within the speed mask
+            valid_indices = np.where(mask)[0]
+            emissions_filtered = db[valid_indices]
+            # Get top indexes relative to valid_indices
+            top_indexes_local = np.argsort(emissions_filtered)[-50000:]
+            # Map back to original d_link indexes
+            final_indices = valid_indices[top_indexes_local]
+            
+            # Create the mask for just these
+            mask = np.zeros(len(d_link), dtype=bool)
+            mask[final_indices] = True
+
         filtered_ids = d_link[mask, 0].astype(int)
         filtered_vals = db[mask]
         lookup = dict(zip(filtered_ids, filtered_vals))
         
         map_data = []
-        max_val = np.max(filtered_vals) if len(filtered_vals) > 0 else 1.0
+        
+        # Avoid crash on empty selection
+        if len(filtered_vals) == 0:
+            st.error("No roads found with current speed filter.")
+            max_val = 1.0
+        else:
+            max_val = np.max(filtered_vals)
+            
         norm = mcolors.Normalize(vmin=0, vmax=max_val)
         cmap = cm.get_cmap("Reds") 
 
-        # 4. Geometry Binding (Handle both types)
-        if 'map_geo_gdf' in st.session_state:
-            # GPKG Logic
-            gdf = st.session_state.map_geo_gdf
-            for _, row in gdf.iterrows():
-                oid = int(row.get('osm_id', 0))
-                if oid in lookup:
+        # 4. Geometry Match (The slow loop - Optimized)
+        with st.spinner(f"Rendering {len(filtered_vals)} road segments..."):
+            if 'map_geo_gdf' in st.session_state:
+                # GPKG Fast Path
+                gdf = st.session_state.map_geo_gdf
+                # Filter GDF by ID first to avoid looping useless geometry
+                subset = gdf[gdf['osm_id'].isin(lookup.keys())]
+                
+                for _, row in subset.iterrows():
+                    oid = int(row['osm_id'])
                     val = lookup[oid]
                     color = [int(c*255) for c in cmap(norm(val))[:3]]
                     
                     if row.geometry.geom_type == 'LineString':
-                        path = list(row.geometry.coords)
-                        map_data.append({"path": path, "emission": val, "color": color, "name": str(oid)})
+                        map_data.append({"path": list(row.geometry.coords), "emission": val, "color": color, "name": str(oid)})
                     elif row.geometry.geom_type == 'MultiLineString':
                         for line in row.geometry.geoms:
-                            path = list(line.coords)
-                            map_data.append({"path": path, "emission": val, "color": color, "name": str(oid)})
-                            
-        elif 'map_geo' in st.session_state:
-            # OSM Logic
-            coords, ids, names, types = st.session_state.map_geo
-            for r, oid, name in zip(coords, ids, names):
-                if oid in lookup:
-                    val = lookup[oid]
-                    color = [int(c*255) for c in cmap(norm(val))[:3]]
-                    map_data.append({"path": r, "emission": val, "color": color, "name": name})
+                            map_data.append({"path": list(line.coords), "emission": val, "color": color, "name": str(oid)})
+            
+            elif 'map_geo' in st.session_state:
+                # OSM Fast Path
+                coords, ids, names, types = st.session_state.map_geo
+                # Zip is still python-slow, but we skip fast if ID mismatch
+                for r, oid, name in zip(coords, ids, names):
+                    if oid in lookup:
+                        val = lookup[oid]
+                        color = [int(c*255) for c in cmap(norm(val))[:3]]
+                        map_data.append({"path": r, "emission": val, "color": color, "name": name})
 
         if not map_data:
-            st.warning("No matching links found. Check if your Link Data IDs match the Map IDs.")
+            st.warning("No visual data generated. Try lowering the speed filter.")
         else:
             # 5. Render PyDeck
             layer = pdk.Layer(
@@ -546,18 +565,21 @@ with tab6:
                 pickable=True,
                 get_color="color",
                 width_scale=1,
-                width_min_pixels=2,
+                width_min_pixels=1, # Thinner lines for country view
                 get_path="path",
                 get_width=lw,
                 opacity=0.9
             )
             
-            # Auto-Center
-            if map_data:
-                start = map_data[0]['path'][0]
-                view_state = pdk.ViewState(latitude=start[1], longitude=start[0], zoom=12, pitch=pitch)
+            # Smart Auto-Center
+            if len(map_data) > 0:
+                mid_idx = len(map_data) // 2
+                start = map_data[mid_idx]['path'][0]
+                # If country view (high data count), zoom out
+                zoom_lvl = 6 if total_links > 20000 else 12
+                view_state = pdk.ViewState(latitude=start[1], longitude=start[0], zoom=zoom_lvl, pitch=pitch)
             else:
-                view_state = pdk.ViewState(latitude=6.5, longitude=3.3, zoom=12, pitch=pitch)
+                view_state = pdk.ViewState(latitude=9.0, longitude=7.0, zoom=6, pitch=pitch) # Nigeria center
             
             deck = pdk.Deck(
                 layers=[layer],
@@ -572,7 +594,7 @@ with tab6:
             fig, ax = plt.subplots(figsize=(6, 0.5))
             matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='horizontal')
             st.pyplot(fig)
-
+            
 # --- TAB 7: DOWNLOAD (Preserved) ---
 with tab7:
     st.header("📥 Download Results")
