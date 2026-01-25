@@ -2,11 +2,10 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import requests
-import pydeck as pdk
 import matplotlib
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
+import matplotlib.cm as cmx
+import matplotlib.colors as colors
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.colors import sample_colorscale
@@ -78,11 +77,6 @@ st.markdown("""
     }
     .stAlert {
         background-color: #e7f3ff;
-    }
-    /* Make map container nicer */
-    .stDeckGlJsonChart {
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        border-radius: 8px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -387,102 +381,132 @@ with tab5:
         with c2: st.dataframe(df_v, hide_index=True)
     else: st.info("Calculate first.")
 
-# --- TAB 6: INTERACTIVE MAP (POWER BI STYLE) ---
+# --- TAB 6: INTERACTIVE MAP (PLOTLY MAPBOX - RESTORED) ---
 with tab6:
     st.header("🗺️ Interactive Map")
-    if 'emissions_db' not in st.session_state:
-        st.warning("⚠️ Calculate emissions first.")
-    elif osm_file is None:
-        st.warning("⚠️ OSM Network file missing.")
-    else:
-        # Load Geometry
-        if 'map_geo_gdf' not in st.session_state:
-            with st.spinner("Loading Map Geometry (One-time setup)..."):
-                try:
-                    osm_file.seek(0)
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.gpkg') as tmp:
-                        tmp.write(osm_file.read())
-                        tmp_path = tmp.name
-                    try: gdf = gpd.read_file(tmp_path)
-                    except:
-                        coords, ids, names, types = parse_osm_network_cached(osm_file, x_min, x_max, y_min, y_max, tolerance, ncore)
-                        from shapely.geometry import LineString
-                        rows = [{'osm_id': int(oid), 'name': name, 'geometry': LineString(path)} for path, oid, name in zip(coords, ids, names) if len(path) > 1]
-                        gdf = gpd.GeoDataFrame(rows, crs="EPSG:4326")
-                    if 'osm_id' in gdf.columns: gdf['osm_id'] = pd.to_numeric(gdf['osm_id'], errors='coerce').fillna(0).astype(int)
-                    elif 'id' in gdf.columns: gdf['osm_id'] = pd.to_numeric(gdf['id'], errors='coerce').fillna(0).astype(int)
-                    if gdf.crs and gdf.crs.to_epsg() != 4326: gdf = gdf.to_crs(epsg=4326)
-                    st.session_state.map_geo_gdf = gdf
-                    os.unlink(tmp_path)
-                except Exception as e: st.error(f"Map Prep Error: {e}"); st.stop()
+    
+    # Check if calculation is done
+    if 'emissions_db' in st.session_state:
+        if osm_file is None:
+            st.warning("⚠️ Network file is missing. Please check the sidebar.")
+        else:
+            # --- Load Geometry (Optimized via GeoPandas) ---
+            if 'map_geo_gdf' not in st.session_state:
+                with st.spinner("Loading Map Geometry (One-time setup)..."):
+                    try:
+                        osm_file.seek(0)
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.gpkg') as tmp:
+                            tmp.write(osm_file.read())
+                            tmp_path = tmp.name
+                        try: gdf = gpd.read_file(tmp_path)
+                        except:
+                            # Fallback if raw OSM
+                            coords, ids, names, types = parse_osm_network_cached(osm_file, x_min, x_max, y_min, y_max, tolerance, ncore)
+                            from shapely.geometry import LineString
+                            rows = [{'osm_id': int(oid), 'name': name, 'geometry': LineString(path)} for path, oid, name in zip(coords, ids, names) if len(path) > 1]
+                            gdf = gpd.GeoDataFrame(rows, crs="EPSG:4326")
+                        
+                        if 'osm_id' in gdf.columns: gdf['osm_id'] = pd.to_numeric(gdf['osm_id'], errors='coerce').fillna(0).astype(int)
+                        elif 'id' in gdf.columns: gdf['osm_id'] = pd.to_numeric(gdf['id'], errors='coerce').fillna(0).astype(int)
+                        if gdf.crs and gdf.crs.to_epsg() != 4326: gdf = gdf.to_crs(epsg=4326)
+                        
+                        # Clip to the currently selected state boundaries from Sidebar
+                        gdf = gdf.cx[x_min:x_max, y_min:y_max]
+                        
+                        st.session_state.map_geo_gdf = gdf
+                        os.unlink(tmp_path)
+                    except Exception as e: st.error(f"Map Prep Error: {e}"); st.stop()
 
-        # Dashboard Controls (Power BI Style Header)
-        with st.expander("Map & Visual Controls", expanded=True):
-            c1, c2, c3, c4 = st.columns(4)
-            with c1: view_poll = st.selectbox("Pollutant", selected_pollutants)
-            with c2: 
-                # Map Style Dropdown
-                map_style_name = st.selectbox("Base Map", ["Light", "Dark", "Satellite", "Streets", "Outdoors"])
-                map_styles = {
-                    "Light": "mapbox://styles/mapbox/light-v9", 
-                    "Dark": "mapbox://styles/mapbox/dark-v9", 
-                    "Satellite": "mapbox://styles/mapbox/satellite-v9", 
-                    "Streets": "mapbox://styles/mapbox/streets-v11", 
-                    "Outdoors": "mapbox://styles/mapbox/outdoors-v11"
-                }
+            # --- MAP CONTROLS (RESTORED FROM ORIGINAL SCRIPT) ---
+            c1, c2, c3 = st.columns([1, 1, 2])
+            with c1:
+                map_poll = st.selectbox("Pollutant Layer", selected_pollutants)
+                map_style = st.selectbox("Base Map", ["carto-positron", "carto-darkmatter", "open-street-map"])
+            with c2:
+                color_theme = st.selectbox("Color Theme", ["Reds", "Jet", "Viridis", "Plasma", "Inferno"])
+                line_scale = st.slider("Line Width Scale", 1.0, 5.0, 2.5)
             with c3:
-                # Safe Colormap mapping
-                cmap_name = st.selectbox("Color Palette", ["Reds", "Plasma", "Inferno", "Viridis", "Jet"])
-                cmap_key_map = {"Reds": "Reds", "Plasma": "plasma", "Inferno": "inferno", "Viridis": "viridis", "Jet": "jet"}
-                selected_cmap = cmap_key_map[cmap_name]
-            with c4: f_speed = st.slider("Min Speed Filter", 0, 130, 0)
+                f_speed = st.slider("Filter Speed (km/h)", 0, 130, (0, 130))
 
-        with st.spinner(f"Rendering {selected_state}..."):
-            db_vals = st.session_state.emissions_db[view_poll]['total']
-            d_link = st.session_state.data_link
-            df_emissions = pd.DataFrame({'osm_id': d_link[:, 0].astype(int), 'emission': db_vals, 'speed': d_link[:, 3]})
-            df_emissions = df_emissions[df_emissions['speed'] >= f_speed]
-            gdf_map = st.session_state.map_geo_gdf
-            if selected_state != "All Nigeria": gdf_map = gdf_map.cx[x_min:x_max, y_min:y_max]
-            
-            merged_gdf = gdf_map.merge(df_emissions, on='osm_id', how='inner')
-            match_count = len(merged_gdf)
-            
-            if match_count == 0:
-                st.warning(f"No matched roads found in **{selected_state}**.")
-            else:
-                st.success(f"✅ Visualizing {match_count} roads in {selected_state}.")
-                max_val = merged_gdf['emission'].max()
+            try:
+                # Prepare data
+                gdf_map = st.session_state.map_geo_gdf
+                emis = st.session_state.emissions_db[map_poll]['total']
+                link_data = st.session_state.data_link
                 
-                # Fixed: Use matplotlib.colormaps for safety
-                try:
-                    cmap = matplotlib.colormaps[selected_cmap]
-                except:
-                    cmap = matplotlib.colormaps['Reds'] # Fallback
+                # Create DataFrame matching OSM_IDs
+                df_emissions = pd.DataFrame({'osm_id': link_data[:, 0].astype(int), 'val': emis, 'speed': link_data[:, 3]})
+                
+                # Merge Geometry with Data
+                map_df = gdf_map.merge(df_emissions, on='osm_id', how='inner')
+                
+                # Apply Speed Filter
+                map_df = map_df[(map_df['speed'] >= f_speed[0]) & (map_df['speed'] <= f_speed[1])]
+
+                if map_df.empty:
+                    st.warning(f"No data passed current filters for {selected_state}.")
+                    st.stop()
+                
+                # >>> QUANTILE-BASED NORMALIZATION (RESTORED LOGIC)
+                vmin = map_df['val'].quantile(0.05)
+                vmax = map_df['val'].quantile(0.95)
+                if vmax <= vmin: vmin = map_df['val'].min(); vmax = map_df['val'].max()
+                
+                fig = go.Figure()
+                
+                # Optimization: Limit drawing if too many lines to prevent crash, or inform user
+                if len(map_df) > 5000:
+                    st.info(f"Rendering {len(map_df)} road segments. This might take a moment...")
+
+                # Loop to create traces (Allows variable line width per segment as per old script)
+                # Note: This reproduces the exact visual logic but can be slow for massive networks.
+                for _, r in map_df.iterrows():
+                    geom = r['geometry']
+                    clamped_val = max(min(r['val'], vmax), vmin)
+                    norm_val = (clamped_val - vmin) / (vmax - vmin + 1e-9)
+                    color = sample_colorscale(color_theme, norm_val)[0]
+                    width = 0.5 + line_scale * norm_val # Dynamic width logic
                     
-                norm = mcolors.Normalize(vmin=0, vmax=max_val)
-                merged_gdf['color'] = merged_gdf['emission'].apply(lambda val: [int(c*255) for c in cmap(norm(val))[:3]])
+                    if geom.geom_type == "LineString":
+                        xs, ys = geom.xy
+                        fig.add_trace(go.Scattermapbox(
+                            lon=list(xs), lat=list(ys), mode="lines",
+                            line=dict(width=width, color=color), hoverinfo="skip", showlegend=False
+                        ))
+                    elif geom.geom_type == "MultiLineString":
+                        for g in geom.geoms:
+                            xs, ys = g.xy
+                            fig.add_trace(go.Scattermapbox(
+                                lon=list(xs), lat=list(ys), mode="lines",
+                                line=dict(width=width, color=color), hoverinfo="skip", showlegend=False
+                            ))
+
+                # >>> COLORBAR TRACE
+                # Calculate center based on selected state boundaries
+                center_lat = (y_min + y_max) / 2
+                center_lon = (x_min + x_max) / 2
                 
-                geojson_data = getattr(merged_gdf, "__geo_interface__", None) or merged_gdf.to_json()
-                
-                layer = pdk.Layer(type="GeoJsonLayer", data=geojson_data, pickable=True, stroked=True, filled=False, get_line_color="properties.color", get_line_width=15, line_width_min_pixels=1, opacity=0.9)
-                minx, miny, maxx, maxy = merged_gdf.total_bounds
-                view_state = pdk.ViewState(latitude=(miny+maxy)/2, longitude=(minx+maxx)/2, zoom=10, pitch=45)
-                
-                deck = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"html": "<b>ID:</b> {osm_id}<br/><b>Emission:</b> {emission:.2f} g/km"}, map_style=map_styles[map_style_name])
-                
-                # Power BI Style Layout
-                st.pydeck_chart(deck)
-                
-                # Horizontal Legend Below Map
-                st.markdown("---")
-                col_L1, col_L2 = st.columns([1, 10])
-                with col_L1: st.write(f"**{view_poll} (g/km)**")
-                with col_L2:
-                    # Slim, Horizontal Colorbar
-                    fig, ax = plt.subplots(figsize=(10, 0.3)) 
-                    matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='horizontal')
-                    st.pyplot(fig, use_container_width=True)
+                fig.add_trace(go.Scattermapbox(
+                    lon=[center_lon], lat=[center_lat], mode="markers",
+                    marker=dict(size=0, color=map_df['val'], colorscale=color_theme, cmin=vmin, cmax=vmax,
+                                colorbar=dict(title=dict(text=f"{map_poll} (g/km)"), thickness=15)),
+                    hoverinfo="none", showlegend=False
+                ))
+
+                fig.update_layout(
+                    mapbox_style=map_style,
+                    mapbox_center={"lat": center_lat, "lon": center_lon},
+                    mapbox_zoom=10, # Adjusted for state level view
+                    height=600,
+                    margin={"r":0,"t":0,"l":0,"b":0}
+                )
+
+                st.plotly_chart(fig, use_container_width=True)
+
+            except Exception as e:
+                st.error(f"Error generating Plotly map: {e}")
+    else:
+        st.info("Please calculate emissions first in Tab 4.")
 
 with tab7:
     st.header("📥 Download Results")
