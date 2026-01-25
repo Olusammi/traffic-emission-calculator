@@ -42,6 +42,7 @@ DEFAULT_FILES_MAP = {
 
 # ==================== STATE BOUNDARIES ====================
 NIGERIA_STATES = {
+    "Lagos": [3.0, 6.3, 4.5, 6.7],
     "All Nigeria": [2.6, 4.2, 14.7, 14.0],
     "Abia": [7.0, 4.8, 7.9, 6.0], "Adamawa": [11.0, 7.0, 14.0, 11.0], "Akwa Ibom": [7.5, 4.4, 8.5, 5.5],
     "Anambra": [6.5, 5.5, 7.5, 6.8], "Bauchi": [8.5, 9.5, 11.0, 12.5], "Bayelsa": [5.0, 4.0, 7.0, 5.5],
@@ -237,11 +238,11 @@ with proportion_files:
 
 st.sidebar.header("🗺️ Map Parameters")
 with st.sidebar.expander("Boundaries (State/Region)", expanded=True):
-    #selected_state = st.selectbox("Select Region/State to Analyze", list(NIGERIA_STATES.keys()))
-    #defaults = NIGERIA_STATES[selected_state]
-    states = list(NIGERIA_STATES.keys())
-    default_index = states.index("Lagos")
-    selected_state = st.selectbox("Select Region/State to Analyze",states,index=default_index)
+    selected_state = st.selectbox("Select Region/State to Analyze", list(NIGERIA_STATES.keys()))
+    defaults = NIGERIA_STATES[selected_state]
+    #states = list(NIGERIA_STATES.keys())
+    #default_index = states.index("Lagos")
+    #selected_state = st.selectbox("Select Region/State to Analyze",states,index=default_index)
     
     col1, col2 = st.columns(2)
     x_min = col1.number_input("X Min (Lon)", value=defaults[0], format="%.5f")
