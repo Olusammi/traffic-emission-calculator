@@ -381,7 +381,7 @@ with tab5:
         with c2: st.dataframe(df_v, hide_index=True)
     else: st.info("Calculate first.")
 
-# --- TAB 6: INTERACTIVE MAP (PLOTLY MAPBOX - RESTORED) ---
+# --- TAB 6: INTERACTIVE MAP (OPTIMIZED PYDECK) ---
 with tab6:
     st.header("🗺️ Interactive Map")
     
@@ -417,18 +417,29 @@ with tab6:
                         os.unlink(tmp_path)
                     except Exception as e: st.error(f"Map Prep Error: {e}"); st.stop()
 
-            # --- MAP CONTROLS (RESTORED FROM ORIGINAL SCRIPT) ---
+            # --- MAP CONTROLS ---
             c1, c2, c3 = st.columns([1, 1, 2])
             with c1:
                 map_poll = st.selectbox("Pollutant Layer", selected_pollutants)
-                map_style = st.selectbox("Base Map", ["carto-positron", "carto-darkmatter", "open-street-map"])
+                map_style = st.selectbox("Base Map", ["Light", "Dark", "Satellite", "Streets", "Outdoors"])
+                # Mapbox style URLs
+                map_styles = {
+                    "Light": "mapbox://styles/mapbox/light-v9", 
+                    "Dark": "mapbox://styles/mapbox/dark-v9", 
+                    "Satellite": "mapbox://styles/mapbox/satellite-v9", 
+                    "Streets": "mapbox://styles/mapbox/streets-v11", 
+                    "Outdoors": "mapbox://styles/mapbox/outdoors-v11"
+                }
             with c2:
+                # Color Palette Selection
                 color_theme = st.selectbox("Color Theme", ["Reds", "Jet", "Viridis", "Plasma", "Inferno"])
-                line_scale = st.slider("Line Width Scale", 1.0, 5.0, 2.5)
+                line_scale = st.slider("Line Width Scale", 1, 10, 5)
             with c3:
                 f_speed = st.slider("Filter Speed (km/h)", 0, 130, (0, 130))
 
             try:
+                import pydeck as pdk
+                
                 # Prepare data
                 gdf_map = st.session_state.map_geo_gdf
                 emis = st.session_state.emissions_db[map_poll]['total']
@@ -447,64 +458,89 @@ with tab6:
                     st.warning(f"No data passed current filters for {selected_state}.")
                     st.stop()
                 
-                # >>> QUANTILE-BASED NORMALIZATION (RESTORED LOGIC)
+                # >>> NORMALIZE DATA FOR COLORING & WIDTH
                 vmin = map_df['val'].quantile(0.05)
                 vmax = map_df['val'].quantile(0.95)
                 if vmax <= vmin: vmin = map_df['val'].min(); vmax = map_df['val'].max()
                 
-                fig = go.Figure()
+                # Normalize 0-1 for colormap mapping
+                # We do this in Python to assign explicit RGB colors to the dataframe
+                # This prevents the browser from having to calculate colors per frame
+                norm = matplotlib.colors.Normalize(vmin=vmin, vmax=vmax)
                 
-                # Optimization: Limit drawing if too many lines to prevent crash, or inform user
-                if len(map_df) > 5000:
-                    st.info(f"Rendering {len(map_df)} road segments. This might take a moment...")
+                # Select Colormap
+                # Fix for recent Matplotlib versions which require 'matplotlib.colormaps[name]'
+                try:
+                    cmap_obj = matplotlib.colormaps[color_theme]
+                except:
+                    # Fallback for older matplotlib or if name mismatch
+                    cmap_obj = matplotlib.cm.get_cmap(color_theme)
 
-                # Loop to create traces (Allows variable line width per segment as per old script)
-                # Note: This reproduces the exact visual logic but can be slow for massive networks.
-                for _, r in map_df.iterrows():
-                    geom = r['geometry']
-                    clamped_val = max(min(r['val'], vmax), vmin)
-                    norm_val = (clamped_val - vmin) / (vmax - vmin + 1e-9)
-                    color = sample_colorscale(color_theme, norm_val)[0]
-                    width = 0.5 + line_scale * norm_val # Dynamic width logic
-                    
-                    if geom.geom_type == "LineString":
-                        xs, ys = geom.xy
-                        fig.add_trace(go.Scattermapbox(
-                            lon=list(xs), lat=list(ys), mode="lines",
-                            line=dict(width=width, color=color), hoverinfo="skip", showlegend=False
-                        ))
-                    elif geom.geom_type == "MultiLineString":
-                        for g in geom.geoms:
-                            xs, ys = g.xy
-                            fig.add_trace(go.Scattermapbox(
-                                lon=list(xs), lat=list(ys), mode="lines",
-                                line=dict(width=width, color=color), hoverinfo="skip", showlegend=False
-                            ))
-
-                # >>> COLORBAR TRACE
-                # Calculate center based on selected state boundaries
-                center_lat = (y_min + y_max) / 2
-                center_lon = (x_min + x_max) / 2
+                # Apply colors (R, G, B) - Pydeck expects [R, G, B] list
+                def get_color(val):
+                    rgba = cmap_obj(norm(val))
+                    return [int(c*255) for c in rgba[:3]]
                 
-                fig.add_trace(go.Scattermapbox(
-                    lon=[center_lon], lat=[center_lat], mode="markers",
-                    marker=dict(size=0, color=map_df['val'], colorscale=color_theme, cmin=vmin, cmax=vmax,
-                                colorbar=dict(title=dict(text=f"{map_poll} (g/km)"), thickness=15)),
-                    hoverinfo="none", showlegend=False
-                ))
+                map_df['color'] = map_df['val'].apply(get_color)
+                
+                # Calculate normalized width (0-1) for scaling
+                map_df['norm_val'] = map_df['val'].apply(lambda x: norm(x))
 
-                fig.update_layout(
-                    mapbox_style=map_style,
-                    mapbox_center={"lat": center_lat, "lon": center_lon},
-                    mapbox_zoom=10, # Adjusted for state level view
-                    height=600,
-                    margin={"r":0,"t":0,"l":0,"b":0}
+                # --- PYDECK LAYER (The Performance Fix) ---
+                # We convert to JSON structure Pydeck likes
+                geojson_data = getattr(map_df, "__geo_interface__", None) or map_df.to_json()
+
+                # PathLayer is highly optimized for lines
+                layer = pdk.Layer(
+                    type="GeoJsonLayer",
+                    data=geojson_data,
+                    pickable=True,
+                    stroked=True,
+                    filled=False,
+                    extruded=False,
+                    get_line_color="properties.color",
+                    # Dynamic line width based on emission value * user scale
+                    get_line_width=f"1 + properties.norm_val * {line_scale * 10}", 
+                    line_width_min_pixels=1,
+                    opacity=0.8
                 )
 
-                st.plotly_chart(fig, use_container_width=True)
+                # Set View State to center of data
+                minx, miny, maxx, maxy = map_df.total_bounds
+                view_state = pdk.ViewState(
+                    latitude=(miny + maxy) / 2,
+                    longitude=(minx + maxx) / 2,
+                    zoom=10,
+                    pitch=0
+                )
+
+                # Render Map
+                st.pydeck_chart(pdk.Deck(
+                    layers=[layer],
+                    initial_view_state=view_state,
+                    map_style=map_styles.get(map_style, "mapbox://styles/mapbox/light-v9"),
+                    tooltip={"html": "<b>ID:</b> {osm_id}<br/><b>Emission:</b> {val:.2f} g/km<br/><b>Speed:</b> {speed} km/h"}
+                ))
+
+                # >>> COLORBAR (Horizontal Legend)
+                st.markdown("---")
+                col_L1, col_L2 = st.columns([2, 8])
+                with col_L1: 
+                    st.write(f"**Legend: {map_poll}**")
+                    st.caption(f"Max: {vmax:.2f}")
+                    st.caption(f"Min: {vmin:.2f}")
+                with col_L2:
+                    # Draw a static image of the colorbar using Matplotlib
+                    fig, ax = plt.subplots(figsize=(8, 0.5))
+                    matplotlib.colorbar.ColorbarBase(ax, cmap=cmap_obj, norm=norm, orientation='horizontal')
+                    ax.set_title(f"{map_poll} Emission Intensity (g/km)", fontsize=8)
+                    st.pyplot(fig, use_container_width=True)
 
             except Exception as e:
-                st.error(f"Error generating Plotly map: {e}")
+                st.error(f"Error generating map: {e}")
+                # Print simplified error for debugging
+                import traceback
+                st.code(traceback.format_exc())
     else:
         st.info("Please calculate emissions first in Tab 4.")
 
