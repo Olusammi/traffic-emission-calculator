@@ -481,12 +481,12 @@ with tab6:
                 
                 map_col, legend_col = st.columns([8, 1])
 
-                MAP_HEIGHT = 1000  # pixels (tweak once, then forget)
+                MAP_HEIGHT = 800  # pixels (tweak once, then forget)
 
                 with map_col:
                     st.pydeck_chart(deck, height=MAP_HEIGHT)
 
-                LEGEND_HEIGHT_IN = MAP_HEIGHT / 100
+                LEGEND_HEIGHT_IN = MAP_HEIGHT / 400
 
                 
                 with legend_col:
@@ -499,7 +499,7 @@ with tab6:
                         norm=norm,
                         orientation="vertical"
                     )
-                    ax.tick_params(labelsize=8)
+                    ax.tick_params(labelsize=5)
                     ax.set_frame_on(False)
                     st.pyplot(fig)
 
