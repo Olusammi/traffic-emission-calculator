@@ -486,15 +486,14 @@ with tab6:
                 
                 with legend_col:
                     st.write(f"**{view_poll} (g/km)**")
-                
-                    fig, ax = plt.subplots(figsize=(0.1, 2.5))
+                    fig, ax = plt.subplots(figsize=(0.1, 2))
                     matplotlib.colorbar.ColorbarBase(
                         ax,
                         cmap=cmap,
                         norm=norm,
                         orientation="vertical"
                     )
-                    ax.tick_params(labelsize=5)
+                    ax.tick_params(labelsize=4)
                     st.pyplot(fig)
 
 
