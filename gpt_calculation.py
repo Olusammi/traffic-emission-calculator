@@ -486,7 +486,7 @@ with tab6:
                 with col_L2:
                     # Slim, Horizontal Colorbar
                     fig, ax = plt.subplots(figsize=(10, 0.3)) 
-                    matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='horizontal')
+                    matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='vertical')
                     st.pyplot(fig, use_container_width=True)
 
 with tab7:
