@@ -389,7 +389,7 @@ with tab5:
         with c2: st.dataframe(df_v, hide_index=True)
     else: st.info("Calculate first.")
 
-# --- TAB 6: INTERACTIVE MAP (FIXED GEOMETRY & TYPES) ---
+# --- TAB 6: INTERACTIVE MAP (BINNED OPTIMIZATION) ---
 with tab6:
     st.header("🗺️ Interactive Map")
     if 'emissions_db' not in st.session_state:
@@ -397,33 +397,34 @@ with tab6:
     elif osm_file is None:
         st.warning("⚠️ OSM Network file missing.")
     else:
-        # Load Geometry
+        # 1. LOAD GEOMETRY
         if 'map_geo_gdf' not in st.session_state:
-            with st.spinner("Loading Map Geometry (One-time setup)..."):
+            with st.spinner("Loading Map Geometry..."):
                 try:
                     osm_file.seek(0)
+                    # Safe temp file handling
                     with tempfile.NamedTemporaryFile(delete=False, suffix='.gpkg') as tmp:
                         tmp.write(osm_file.read())
                         tmp_path = tmp.name
+                    
                     try: 
                         gdf = gpd.read_file(tmp_path)
                     except:
                         # Fallback for OSM XML
                         coords, ids, names, types = parse_osm_network_cached(osm_file, x_min, x_max, y_min, y_max, tolerance, ncore)
                         from shapely.geometry import LineString
-                        rows = [{'osm_id': int(oid), 'name': str(name), 'geometry': LineString(path)} for path, oid, name in zip(coords, ids, names) if len(path) > 1]
+                        rows = [{'osm_id': int(oid), 'name': str(name), 'geometry': LineString(path)} 
+                                for path, oid, name in zip(coords, ids, names) if len(path) > 1]
                         gdf = gpd.GeoDataFrame(rows, crs="EPSG:4326")
 
-                    # Column Standardization & Type Casting
+                    # Normalize Columns
                     if 'osm_id' in gdf.columns: 
                         gdf['osm_id'] = pd.to_numeric(gdf['osm_id'], errors='coerce').fillna(0).astype(int)
                     elif 'id' in gdf.columns: 
                         gdf['osm_id'] = pd.to_numeric(gdf['id'], errors='coerce').fillna(0).astype(int)
                     
-                    if 'name' not in gdf.columns:
-                        gdf['name'] = "Unknown Road"
-                    else:
-                        gdf['name'] = gdf['name'].fillna("Unknown Road").astype(str)
+                    if 'name' not in gdf.columns: gdf['name'] = "Unknown"
+                    else: gdf['name'] = gdf['name'].fillna("Unknown").astype(str)
 
                     if gdf.crs and gdf.crs.to_epsg() != 4326: 
                         gdf = gdf.to_crs(epsg=4326)
@@ -434,30 +435,23 @@ with tab6:
                     st.error(f"Map Prep Error: {e}")
                     st.stop()
 
-        # Dashboard Controls
-        with st.expander("Map & Visual Controls", expanded=True):
+        # 2. CONTROLS
+        with st.expander("Map Settings", expanded=True):
             c1, c2, c3, c4 = st.columns(4)
             with c1: view_poll = st.selectbox("Pollutant", selected_pollutants)
             with c2: 
-                # Mapbox Style Map
-                mapbox_styles = {
-                    "Streets": "open-street-map",
-                    "Light": "carto-positron",
-                    "Dark": "carto-darkmatter",
-                    "Satellite": "white-bg", 
-                    "Outdoors": "stamen-terrain"
-                }
-                style_label = st.selectbox("Base Map", list(mapbox_styles.keys()))
-                selected_map_style = mapbox_styles[style_label]
-            with c3:
-                color_scale_name = st.selectbox("Color Palette", ["Reds", "Plasma", "Inferno", "Viridis", "Jet"])
-            with c4: f_speed = st.slider("Min Speed Filter", 0, 130, 0)
+                map_style = st.selectbox("Base Map", ["open-street-map", "carto-positron", "carto-darkmatter", "white-bg"])
+            with c3: 
+                colorscale_name = st.selectbox("Color Theme", ["Reds", "Jet", "Viridis", "Plasma", "Inferno"], index=0)
+            with c4: 
+                f_speed = st.slider("Min Speed Filter", 0, 130, 0)
 
+        # 3. DATA PROCESSING
         with st.spinner(f"Rendering {selected_state}..."):
             db_vals = st.session_state.emissions_db[view_poll]['total']
             d_link = st.session_state.data_link
             
-            # Prepare Emission Data
+            # Prepare Data Frame
             df_emissions = pd.DataFrame({
                 'osm_id': d_link[:, 0].astype(int), 
                 'emission': db_vals, 
@@ -465,86 +459,117 @@ with tab6:
             })
             df_emissions = df_emissions[df_emissions['speed'] >= f_speed]
             
-            # Filter Geometry
+            # Filter Geometry by State
             gdf_map = st.session_state.map_geo_gdf
             if selected_state != "All Nigeria": 
                 gdf_map = gdf_map.cx[x_min:x_max, y_min:y_max]
             
             # Merge
-            merged_gdf = gdf_map.merge(df_emissions, on='osm_id', how='inner')
+            merged = gdf_map.merge(df_emissions, on='osm_id', how='inner')
             
-            if len(merged_gdf) == 0:
+            if len(merged) == 0:
                 st.warning(f"No matched roads found in **{selected_state}**.")
             else:
-                st.success(f"✅ Visualizing {len(merged_gdf)} roads.")
+                st.success(f"✅ Found {len(merged)} roads.")
                 
-                # PREPARE FOR PLOTLY MAPBOX (LINES)
-                # Optimization: Limit to 10,000 top segments if too big
-                if len(merged_gdf) > 10000:
-                    st.toast(f"Displaying top 10,000 emitters for performance.", icon="⚠️")
-                    merged_gdf = merged_gdf.sort_values('emission', ascending=False).head(10000)
+                # 4. BINNING ALGORITHM (The Fix for TypeError/Crash)
+                # Group data into 8 bins so we only draw 8 traces instead of 10,000
+                num_bins = 8
+                merged['bin'] = pd.qcut(merged['emission'], q=num_bins, duplicates='drop', labels=False)
                 
-                # Extract coordinates explicitly for Plotly Line Mapbox
-                # This ensures types are strictly list of floats
-                plot_data = []
-                for _, row in merged_gdf.iterrows():
-                    gid = str(row['osm_id']) # Group ID must be string/int
-                    val = float(row['emission'])
-                    nm = str(row['name'])
+                # Get Color Map
+                # Convert Plotly/Matplotlib name to list of RGB strings
+                if colorscale_name == "Reds": cmap = matplotlib.colormaps['Reds']
+                elif colorscale_name == "Jet": cmap = matplotlib.colormaps['jet']
+                elif colorscale_name == "Viridis": cmap = matplotlib.colormaps['viridis']
+                elif colorscale_name == "Plasma": cmap = matplotlib.colormaps['plasma']
+                else: cmap = matplotlib.colormaps['inferno']
+                
+                # Create Figure
+                fig = go.Figure()
+                
+                # Calculate bounds for auto-zoom
+                minx, miny, maxx, maxy = merged.total_bounds
+                center_lat = (miny + maxy) / 2
+                center_lon = (minx + maxx) / 2
+                
+                # Iterate through bins and add traces
+                unique_bins = sorted(merged['bin'].unique())
+                
+                for b in unique_bins:
+                    subset = merged[merged['bin'] == b]
+                    if subset.empty: continue
                     
-                    geoms = []
-                    if row.geometry.geom_type == 'LineString':
-                        geoms = [row.geometry]
-                    elif row.geometry.geom_type == 'MultiLineString':
-                        geoms = list(row.geometry.geoms)
+                    # Calculate representative color for this bin (using the max value in bin)
+                    bin_max = subset['emission'].max()
+                    norm_val = (bin_max - merged['emission'].min()) / (merged['emission'].max() - merged['emission'].min() + 1e-9)
+                    rgba = cmap(norm_val)
+                    color_hex = matplotlib.colors.to_hex(rgba)
+                    
+                    # Extract coordinates with None gaps
+                    lats, lons, hover_texts = [], [], []
+                    
+                    for _, row in subset.iterrows():
+                        coords = []
+                        if row.geometry.geom_type == 'LineString':
+                            coords = list(row.geometry.coords)
+                        elif row.geometry.geom_type == 'MultiLineString':
+                            for g in row.geometry.geoms:
+                                coords.extend(list(g.coords))
+                                coords.append((None, None))
                         
-                    for line in geoms:
-                        coords = list(line.coords)
-                        lons, lats = zip(*coords)
-                        # Append a row for EACH point in the line
-                        for lon, lat in zip(lons, lats):
-                            plot_data.append({
-                                'osm_id': gid, 
-                                'lat': lat, 
-                                'lon': lon, 
-                                'emission': val, 
-                                'name': nm
-                            })
+                        if coords:
+                            xs, ys = zip(*coords)
+                            lons.extend(xs)
+                            lats.extend(ys)
+                            # Gap between roads
+                            lons.append(None)
+                            lats.append(None)
                             
-                df_plot = pd.DataFrame(plot_data)
+                            # Add hover text only to the first point of the line to save memory/clutter? 
+                            # Or repeat it? For Scattermapbox lines, text is usually per point.
+                            # To keep it fast, we set hoverinfo on the group.
+                    
+                    # Add Layer
+                    fig.add_trace(go.Scattermapbox(
+                        lat=lats,
+                        lon=lons,
+                        mode='lines',
+                        line=dict(width=2.5, color=color_hex),
+                        name=f"Level {b+1}",
+                        hoverinfo='text',
+                        text=f"Emission Level: {b+1}/{num_bins} (Range: {subset['emission'].min():.1f}-{subset['emission'].max():.1f} g/km)",
+                        opacity=0.8
+                    ))
+
+                # Update Layout
+                fig.update_layout(
+                    mapbox=dict(
+                        style=map_style,
+                        center=dict(lat=center_lat, lon=center_lon),
+                        zoom=10 if selected_state != "All Nigeria" else 6
+                    ),
+                    margin={"r":0,"t":0,"l":0,"b":0},
+                    height=600,
+                    showlegend=False
+                )
                 
-                if not df_plot.empty:
-                    # RENDER MAP
-                    fig = px.line_mapbox(
-                        df_plot, 
-                        lat="lat", 
-                        lon="lon", 
-                        color="emission",
-                        line_group="osm_id", # This connects the points into lines
-                        hover_name="name",
-                        hover_data={"emission": ":.2f", "lat": False, "lon": False, "osm_id": True},
-                        color_continuous_scale=color_scale_name,
-                        zoom=10 if selected_state != "All Nigeria" else 6,
-                        mapbox_style=selected_map_style
-                    )
-                    
-                    # Style adjustments
-                    fig.update_layout(
-                        margin={"r":0,"t":0,"l":0,"b":0},
-                        height=600,
-                        coloraxis_colorbar=dict(
-                            title=f"{view_poll} (g/km)",
-                            thickness=15,
-                            len=0.9,
-                            yanchor="top", y=0.99,
-                            xanchor="right", x=0.99,
-                            bgcolor="rgba(255,255,255,0.7)"
-                        )
-                    )
-                    
+                # Layout: Map + Vertical Legend
+                col_map, col_leg = st.columns([6, 1])
+                with col_map:
                     st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.error("Error: Map data frame is empty after processing.")
+                
+                with col_leg:
+                    # Vertical Colorbar (Matplotlib based, rendered as image)
+                    st.markdown(f"**{view_poll}**")
+                    st.caption("g/km")
+                    
+                    fig_leg, ax = plt.subplots(figsize=(1, 6))
+                    norm = matplotlib.colors.Normalize(vmin=merged['emission'].min(), vmax=merged['emission'].max())
+                    cb = matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='vertical')
+                    # Make it look nice
+                    ax.tick_params(labelsize=8)
+                    st.pyplot(fig_leg, use_container_width=True)
 
 with tab7:
     st.header("📥 Download Results")
