@@ -442,7 +442,9 @@ with tab6:
                 cmap_name = st.selectbox("Color Palette", ["Reds", "Plasma", "Inferno", "Viridis", "Jet"])
                 cmap_key_map = {"Reds": "Reds", "Plasma": "plasma", "Inferno": "inferno", "Viridis": "viridis", "Jet": "jet"}
                 selected_cmap = cmap_key_map[cmap_name]
-            with c4: f_speed = st.slider("Min Speed Filter", 0, 130, 0)
+            with c4:
+                f_speed = st.slider("Min Speed Filter", 0, 130, 0)
+                line_width = st.slider("Line Width", 1, 50, 15)
 
         with st.spinner(f"Rendering {selected_state}..."):
             db_vals = st.session_state.emissions_db[view_poll]['total']
@@ -471,8 +473,7 @@ with tab6:
                 merged_gdf['color'] = merged_gdf['emission'].apply(lambda val: [int(c*255) for c in cmap(norm(val))[:3]])
                 
                 geojson_data = getattr(merged_gdf, "__geo_interface__", None) or merged_gdf.to_json()
-                
-                layer = pdk.Layer(type="GeoJsonLayer", data=geojson_data, pickable=True, stroked=True, filled=False, get_line_color="properties.color", get_line_width=15, line_width_min_pixels=1, opacity=0.9)
+
                 minx, miny, maxx, maxy = merged_gdf.total_bounds
                 view_state = pdk.ViewState(latitude=(miny+maxy)/2, longitude=(minx+maxx)/2, zoom=10, pitch=45)
                 
