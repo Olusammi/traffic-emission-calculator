@@ -497,7 +497,7 @@ with tab6:
                         map_style=map_styles[map_style_name]
                     )
                     # Display the map
-                    st.pydeck_chart(deck)
+                    #st.pydeck_chart(deck)
 
                 # Power BI Style Layout
                 #st.pydeck_chart(deck)
