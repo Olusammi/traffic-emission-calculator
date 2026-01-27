@@ -428,9 +428,10 @@ with tab6:
             with c1: view_poll = st.selectbox("Pollutant", selected_pollutants)
             with c2: 
                 # Map Style Dropdown
-                map_style_name = st.selectbox("Base Map", ["Light", "Dark", "Satellite", "Streets", "Outdoors"])
+                map_style_name = st.selectbox("Base Map", ["OpenStreetMap", "Light", "Dark", "Satellite", "Streets", "Outdoors"])
                 map_styles = {
-                    "Light": "mapbox://styles/mapbox/light-v9", 
+                    "OpenStreetMap": "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
+                    "Light": "mapbox://styles/mapbox/light-v9",
                     "Dark": "mapbox://styles/mapbox/dark-v9", 
                     "Satellite": "mapbox://styles/mapbox/satellite-v9", 
                     "Streets": "mapbox://styles/mapbox/streets-v11", 
