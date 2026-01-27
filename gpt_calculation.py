@@ -446,39 +446,59 @@ with tab6:
                 f_speed = st.slider("Min Speed Filter", 0, 130, 0)
                 line_width = st.slider("Line Width", 1, 50, 15)
 
-        with st.spinner(f"Rendering {selected_state}..."):
-            db_vals = st.session_state.emissions_db[view_poll]['total']
-            d_link = st.session_state.data_link
-            df_emissions = pd.DataFrame({'osm_id': d_link[:, 0].astype(int), 'emission': db_vals, 'speed': d_link[:, 3]})
-            df_emissions = df_emissions[df_emissions['speed'] >= f_speed]
-            gdf_map = st.session_state.map_geo_gdf
-            if selected_state != "All Nigeria": gdf_map = gdf_map.cx[x_min:x_max, y_min:y_max]
-            
-            merged_gdf = gdf_map.merge(df_emissions, on='osm_id', how='inner')
-            match_count = len(merged_gdf)
-            
-            if match_count == 0:
-                st.warning(f"No matched roads found in **{selected_state}**.")
-            else:
-                st.success(f"✅ Visualizing {match_count} roads in {selected_state}.")
-                max_val = merged_gdf['emission'].max()
-                
-                # Fixed: Use matplotlib.colormaps for safety
-                try:
-                    cmap = matplotlib.colormaps[selected_cmap]
-                except:
-                    cmap = matplotlib.colormaps['Reds'] # Fallback
-                    
-                norm = mcolors.Normalize(vmin=0, vmax=max_val)
-                merged_gdf['color'] = merged_gdf['emission'].apply(lambda val: [int(c*255) for c in cmap(norm(val))[:3]])
-                
-                geojson_data = getattr(merged_gdf, "__geo_interface__", None) or merged_gdf.to_json()
+            with st.spinner(f"Rendering {selected_state}..."):
+                db_vals = st.session_state.emissions_db[view_poll]['total']
+                d_link = st.session_state.data_link
+                df_emissions = pd.DataFrame(
+                    {'osm_id': d_link[:, 0].astype(int), 'emission': db_vals, 'speed': d_link[:, 3]})
+                df_emissions = df_emissions[df_emissions['speed'] >= f_speed]
+                gdf_map = st.session_state.map_geo_gdf
+                if selected_state != "All Nigeria":
+                    gdf_map = gdf_map.cx[x_min:x_max, y_min:y_max]
 
-                minx, miny, maxx, maxy = merged_gdf.total_bounds
-                view_state = pdk.ViewState(latitude=(miny+maxy)/2, longitude=(minx+maxx)/2, zoom=10, pitch=45)
-                
-                deck = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"html": "<b>ID:</b> {osm_id}<br/><b>Emission:</b> {emission:.2f} g/km"}, map_style=map_styles[map_style_name])
-                
+                merged_gdf = gdf_map.merge(df_emissions, on='osm_id', how='inner')
+                match_count = len(merged_gdf)
+
+                if match_count == 0:
+                    st.warning(f"No matched roads found in **{selected_state}**.")
+                else:
+                    st.success(f"✅ Visualizing {match_count} roads in {selected_state}.")
+                    max_val = merged_gdf['emission'].max()
+
+                    try:
+                        cmap = matplotlib.colormaps[selected_cmap]
+                    except:
+                        cmap = matplotlib.colormaps['Reds']
+
+                    norm = mcolors.Normalize(vmin=0, vmax=max_val)
+                    merged_gdf['color'] = merged_gdf['emission'].apply(
+                        lambda val: [int(c * 255) for c in cmap(norm(val))[:3]])
+
+                    # Define the layer and apply the line_width slider here
+                    layer = pdk.Layer(
+                        "GeoJsonLayer",
+                        merged_gdf,
+                        pickable=True,
+                        stroked=True,
+                        filled=True,
+                        get_line_color="color",
+                        get_line_width=line_width,
+                        line_width_min_pixels=1
+                    )
+
+                    minx, miny, maxx, maxy = merged_gdf.total_bounds
+                    view_state = pdk.ViewState(latitude=(miny + maxy) / 2, longitude=(minx + maxx) / 2, zoom=10,
+                                               pitch=45)
+
+                    deck = pdk.Deck(
+                        layers=[layer],
+                        initial_view_state=view_state,
+                        tooltip={"html": "<b>ID:</b> {osm_id}<br/><b>Emission:</b> {emission:.2f} g/km"},
+                        map_style=map_styles[map_style_name]
+                    )
+                    # Display the map
+                    st.pydeck_chart(deck)
+
                 # Power BI Style Layout
                 #st.pydeck_chart(deck)
                 
