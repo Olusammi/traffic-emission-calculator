@@ -42,6 +42,7 @@ DEFAULT_FILES_MAP = {
 
 # ==================== STATE BOUNDARIES ====================
 NIGERIA_STATES = {
+    "Lagos": [3.0, 6.3, 4.5, 6.7],
     "All Nigeria": [2.6, 4.2, 14.7, 14.0],
     "Abia": [7.0, 4.8, 7.9, 6.0], "Adamawa": [11.0, 7.0, 14.0, 11.0], "Akwa Ibom": [7.5, 4.4, 8.5, 5.5],
     "Anambra": [6.5, 5.5, 7.5, 6.8], "Bauchi": [8.5, 9.5, 11.0, 12.5], "Bayelsa": [5.0, 4.0, 7.0, 5.5],
@@ -239,6 +240,10 @@ st.sidebar.header("🗺️ Map Parameters")
 with st.sidebar.expander("Boundaries (State/Region)", expanded=True):
     selected_state = st.selectbox("Select Region/State to Analyze", list(NIGERIA_STATES.keys()))
     defaults = NIGERIA_STATES[selected_state]
+    #states = list(NIGERIA_STATES.keys())
+    #default_index = states.index("Lagos")
+    #selected_state = st.selectbox("Select Region/State to Analyze",states,index=default_index)
+    
     col1, col2 = st.columns(2)
     x_min = col1.number_input("X Min (Lon)", value=defaults[0], format="%.5f")
     x_max = col2.number_input("X Max (Lon)", value=defaults[2], format="%.5f")
@@ -472,17 +477,33 @@ with tab6:
                 deck = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"html": "<b>ID:</b> {osm_id}<br/><b>Emission:</b> {emission:.2f} g/km"}, map_style=map_styles[map_style_name])
                 
                 # Power BI Style Layout
-                st.pydeck_chart(deck)
+                #st.pydeck_chart(deck)
                 
-                # Horizontal Legend Below Map
-                st.markdown("---")
-                col_L1, col_L2 = st.columns([1, 10])
-                with col_L1: st.write(f"**{view_poll} (g/km)**")
-                with col_L2:
-                    # Slim, Horizontal Colorbar
-                    fig, ax = plt.subplots(figsize=(10, 0.3)) 
-                    matplotlib.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='horizontal')
-                    st.pyplot(fig, use_container_width=True)
+                map_col, legend_col = st.columns([8, 1])
+
+                MAP_HEIGHT = 800  # pixels (tweak once, then forget)
+
+                with map_col:
+                    st.pydeck_chart(deck, height=MAP_HEIGHT)
+
+                LEGEND_HEIGHT_IN = MAP_HEIGHT / 200
+
+                
+                with legend_col:
+                    st.write(f"**{view_poll} (g/km)**")
+                
+                    fig, ax = plt.subplots(figsize=(0.25, LEGEND_HEIGHT_IN))
+                    matplotlib.colorbar.ColorbarBase(
+                        ax,
+                        cmap=cmap,
+                        norm=norm,
+                        orientation="vertical"
+                    )
+                    ax.tick_params(labelsize=5)
+                    ax.set_frame_on(False)
+                    st.pyplot(fig)
+
+
 
 with tab7:
     st.header("📥 Download Results")
