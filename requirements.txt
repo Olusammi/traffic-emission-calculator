@@ -7,3 +7,4 @@ osmium
 plotly>=5.0.0
 statsmodels
 geopandas
+opencv-python-headless
