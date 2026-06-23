@@ -6,3 +6,4 @@ libboost-dev
 libexpat1-dev
 zlib1g-dev
 libbz2-dev
+libgl1
